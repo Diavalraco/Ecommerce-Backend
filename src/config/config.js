@@ -4,6 +4,17 @@ const dotnev = require('dotenv');
 
 dotnev.config({path: path.join(__dirname, '../../.env')});
 
+const parseKey = (key) => {
+  if (!key) return key;
+  let cleanKey = key.replace(/^["']|["']$/g, '');
+  cleanKey = cleanKey.replace(/\\n/g, '\n');
+  if (!cleanKey.includes('-----BEGIN PRIVATE KEY-----')) {
+    console.warn('Private key does not appear to be properly formatted');
+  }
+
+  return cleanKey;
+};
+
 // schema of env files for validation
 const envVarsSchema = Joi.object()
   .keys({
@@ -70,7 +81,7 @@ module.exports = {
     type: envVars.FIREBASE_TYPE,
     project_id: envVars.FIREBASE_PROJECT_ID,
     private_key_id: envVars.FIREBASE_PRIVATE_KEY_ID,
-    private_key: envVars.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    private_key:parseKey(envVars.FIREBASE_PRIVATE_KEY),
     client_email: envVars.FIREBASE_CLIENT_EMAIL,
     client_id: envVars.FIREBASE_CLIENT_ID,
     auth_uri: envVars.FIREBASE_AUTH_URI,
