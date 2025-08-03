@@ -49,7 +49,7 @@ const getPublicBlogs = catchAsync(async (req, res) => {
   }
   if (category) query.categories = new mongoose.Types.ObjectId(category);
   if (topic) query.topics = new mongoose.Types.ObjectId(topic);
-  if (author) query.author =new  mongoose.Types.ObjectId(author);
+  if (author) query.author = new mongoose.Types.ObjectId(author);
   if (featured === 'true') query.featured = true;
   if (popular === 'true') query.popular = true;
 
@@ -88,10 +88,28 @@ const getPublicBlogs = catchAsync(async (req, res) => {
   });
 });
 
+const getBlogById = async (req, res) => {
+  try {
+    const blog = await Blog.findByIdAndUpdate(req.params.id, {$inc: {views: 1}}, {new: true})
+      .populate('author')
+      .populate('categories')
+      .populate('topics');
+    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
+    res.json({success: true, data: blog});
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching blog',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   deleteUser,
   updateUser,
   softDeleteUser,
   updatePreferences,
   getPublicBlogs,
+  getBlogById,
 };

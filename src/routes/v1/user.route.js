@@ -7,7 +7,7 @@ const publicblogController = require('../../controllers/publicblog.controller');
 const {userController} = require('../../controllers');
 const blogController = require('../../controllers/blog.controller');
 const CategoryController = require('../../controllers/category.controller');
-const  favController  = require('../../controllers/favorite.controller');
+const favController = require('../../controllers/favorite.controller');
 const {fileUploadService} = require('../../microservices');
 
 const router = express.Router();
@@ -35,28 +35,15 @@ router.delete('/:userId', validate(userValidation.deleteUser), firebaseAuth('Adm
 // to soft delete a user
 router.post('/delete/:userId', validate(userValidation.deleteUser), firebaseAuth('All'), userController.softDeleteUser);
 
-router.get('/public/blogs',firebaseAuth('user'), userController.getPublicBlogs);
+router.get('/public/blogs', firebaseAuth('user'), userController.getPublicBlogs);
 router.get('/public/blogs/category/:categoryId', publicblogController.getBlogsByCategory);
 router.get('/public/categories', CategoryController.getAllCategories);
-router.get('/public/blogs/:id', blogController.getBlogById);
+router.get('/public/blogs/:id', userController.getBlogById);
 
+router.post('/blogs/:id/favorite', firebaseAuth('user'), favController.markFavorite);
 
-router.post(
-  '/blogs/:id/favorite',
-  firebaseAuth('user'),
-  favController.markFavorite
-);
+router.delete('/blogs/:id/favorite', firebaseAuth('user'), favController.unmarkFavorite);
 
-router.delete(
-  '/blogs/:id/favorite',
-  firebaseAuth('user'),
-  favController.unmarkFavorite
-);
-
-router.get(
-  '/users/favorites',
-  firebaseAuth('user'),
-  favController.getMyFavorites
-);
+router.get('/users/favorites', firebaseAuth('user'), favController.getMyFavorites);
 
 module.exports = router;
