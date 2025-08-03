@@ -1,56 +1,47 @@
-const admin = require('firebase-admin');
+const admin = require('../microservices/firebase.service');
 const httpStatus = require('http-status');
 const ApiError = require('../utils/ApiError');
+const authService = require('../services/auth.service');
 
-const serviceAccount = require('../../firebase-service-secret.json');
-const {authService} = require('../services');
+const firebaseAuth = (requiredRole = 'any') => async (req, res, next) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    return next(new ApiError('Please authenticate', httpStatus.BAD_REQUEST));
+  }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+  try {
+    const payload = await admin.auth().verifyIdToken(token, true);
+    const existing = await authService.getUserByFirebaseUId(payload.uid);
 
-const firebaseAuth = (allowUserType = 'All') => async (req, res, next) => {
-  return new Promise(async (resolve, reject) => {
-    const token = req.headers?.authorization?.split(' ')[1];
-    console.log(token);
-    // token not found
-    if (!token) {
-      reject(new ApiError(httpStatus.BAD_REQUEST, 'Please Authenticate!'));
-    }
-    try {
-      const payload = await admin.auth().verifyIdToken(token, true);
-      console.log(payload);
-      const user = await authService.getUserByFirebaseUId(payload.uid);
-      if (!user) {
-        console.log(req.path);
-        if (['/register'].includes(req.path) || req.path.includes('secretSignup')) {
-          req.newUser = payload;
-          req.routeType = allowUserType;
-        } else reject(new ApiError(httpStatus.NOT_FOUND, "User doesn't exist. Please create account"));
+    if (!existing) {
+      if (req.originalUrl.includes('/register') || req.originalUrl.includes('/admin-secretSignup')) {
+        req.newUser = payload;
+        req.defaultRole = requiredRole === 'admin' ? 'admin' : 'user';
       } else {
-        if (!allowUserType.split(',').includes(user.__t) && allowUserType !== 'All') {
-          reject(new ApiError(httpStatus.FORBIDDEN, "Sorry, but you can't access this"));
-        }
-        if (user.isBlocked) {
-          reject(new ApiError(httpStatus.FORBIDDEN, 'User is blocked'));
-        }
-        if (user.isDeleted) {
-          reject(new ApiError(httpStatus.GONE, "User doesn't exist anymore"));
-        }
-        req.user = user;
+        throw new ApiError("User doesn't exist. Please register.", httpStatus.NOT_FOUND);
       }
-
-      resolve();
-    } catch (err) {
-      if (err.code === 'auth/id-token-expired') {
-        reject(new ApiError(httpStatus.UNAUTHORIZED, 'Session is expired'));
+    } else {
+      if (requiredRole !== 'any' && existing.role !== requiredRole && requiredRole !== 'both') {
+        throw new ApiError("You don't have permission", httpStatus.FORBIDDEN);
       }
-      console.log('FirebaseAuthError:', err);
-      reject(new ApiError(httpStatus.UNAUTHORIZED, 'Failed to authenticate'));
+      if (existing.isBlocked) {
+        throw new ApiError('User is blocked', httpStatus.FORBIDDEN);
+      }
+      if (existing.isDeleted) {
+        throw new ApiError("User doesn't exist anymore", httpStatus.GONE);
+      }
+      req.user = existing;
     }
-  })
-    .then(() => next())
-    .catch(err => next(err));
+
+    return next();
+  } catch (err) {
+    if (err.code === 'auth/id-token-expired') {
+      return next(new ApiError('Session expired', httpStatus.UNAUTHORIZED));
+    }
+    console.error('FirebaseAuthError:', err);
+    return next(new ApiError('Failed to authenticate', httpStatus.UNAUTHORIZED));
+  }
 };
 
 module.exports = firebaseAuth;

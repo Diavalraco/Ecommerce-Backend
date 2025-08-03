@@ -1,46 +1,113 @@
-const {authService, favouriteService, userService} = require('../services');
 const catchAsync = require('../utils/catchAsync');
+const httpStatus = require('http-status');
+const ApiError = require('../utils/ApiError');
+const admin = require('firebase-admin');
+const fetch = require('node-fetch');
+const config = require('../config/config');
+const authService = require('../services/auth.service');
 
-const createNewUserObject = newUser => ({
-  email: newUser.email,
+const createNewUserObject = (newUser, defaultRole) => ({
+  email: newUser.email || null,
+  phoneNumber: newUser.phone_number || null,
   firebaseUid: newUser.uid,
-  profilePic: newUser.picture,
-  isEmailVerified: newUser.isEmailVerified,
+  isEmailVerified: newUser.email_verified || false,
   firebaseSignInProvider: newUser.firebase.sign_in_provider,
-});
-
-const loginUser = catchAsync(async (req, res) => {
-  const user = req.user.__t === 'Student' ? await userService.getStudent(req.user._id) : req.user;
-  res.status(200).send({data: req.user});
+  role: defaultRole,
 });
 
 const registerUser = catchAsync(async (req, res) => {
   if (req.user) {
-    res.status(401).send({message: 'User already exist'});
-    // } else if (!req.newUser.email_verified) {
-    //   res.status(401).send({ message: "Email not verified" });
-  } else {
-    const userObj = {
-      ...createNewUserObject(req.newUser),
-      ...req.body,
-    };
-    let user = null;
-    switch (req.routeType) {
-      case 'Client':
-        const favourites = await favouriteService.createFavourite();
-        user = await authService.createStudent({...userObj, favourites}, req.file);
-        break;
-      case 'Admin':
-        user = await authService.createAdmin(userObj);
-        break;
-      default:
-        break;
-    }
-    res.status(201).send({data: user});
+    return res.status(httpStatus.CONFLICT).json({
+      status: false,
+      message: 'User already exists',
+      data: req.user,
+    });
   }
+
+  const baseObj = createNewUserObject(req.newUser, req.defaultRole);
+  const userObj = {...baseObj, ...req.body};
+
+  const user = await authService.createUser(userObj);
+  if (!user) {
+    throw new ApiError('User registration failed', httpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  res.status(httpStatus.CREATED).json({
+    status: true,
+    message: 'User registered successfully',
+    data: user,
+  });
+});
+
+const loginUser = catchAsync(async (req, res) => {
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'User logged in successfully',
+    data: req.user,
+  });
+});
+
+const generateToken = catchAsync(async (req, res) => {
+  const {uid} = req.body;
+  if (!uid) {
+    throw new ApiError('uid is required', httpStatus.BAD_REQUEST);
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+  const response = await fetch(
+    `https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyCustomToken?key=${config.firebase.apiKey}`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token: customToken, returnSecureToken: true}),
+    }
+  );
+
+  if (!response.ok) {
+    throw new ApiError('Failed to exchange custom token', httpStatus.BAD_GATEWAY);
+  }
+
+  const {idToken} = await response.json();
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Token generated successfully',
+    data: {customToken, idToken},
+  });
+});
+
+const forgotPassword = catchAsync(async (req, res) => {
+  const {email} = req.body;
+  if (!email) {
+    throw new ApiError('Email is required', httpStatus.BAD_REQUEST);
+  }
+
+  try {
+    await admin.auth().getUserByEmail(email);
+  } catch {
+    throw new ApiError('Email not registered', httpStatus.NOT_FOUND);
+  }
+
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${config.firebase.apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({requestType: 'PASSWORD_RESET', email}),
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new ApiError(data.error?.message || 'Failed to send reset email', httpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Password reset email sent successfully',
+  });
 });
 
 module.exports = {
-  loginUser,
   registerUser,
+  loginUser,
+  generateToken,
+  forgotPassword,
 };

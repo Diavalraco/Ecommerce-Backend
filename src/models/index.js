@@ -1,8 +1,5 @@
-const {User, Client} = require('./user.model');
-const {AppNotification} = require('./appNotification.model');
+const {User} = require('./user.model');
 
 module.exports = {
   User,
-  Client,
-  AppNotification,
 };

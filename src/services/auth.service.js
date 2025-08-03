@@ -1,11 +1,10 @@
 const {User} = require('../models');
 
-async function createUser(user) {
-  return User.create(user);
+async function createUser(userObj) {
+  return User.create(userObj);
 }
-
-async function getUserByFirebaseUId(id) {
-  return User.findOne({firebaseUid: id});
+async function getUserByFirebaseUId(uid) {
+  return User.findOne({firebaseUid: uid});
 }
 
 module.exports = {
