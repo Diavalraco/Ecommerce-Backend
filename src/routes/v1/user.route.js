@@ -3,7 +3,7 @@ const express = require('express');
 const validate = require('../../middlewares/validate');
 const firebaseAuth = require('../../middlewares/firebaseAuth');
 const userValidation = require('../../validations/user.validation');
-
+const publicblogController  = require('../../controllers/publicblog.controller');
 const {userController} = require('../../controllers');
 const {fileUploadService} = require('../../microservices');
 
@@ -31,5 +31,9 @@ router.delete('/:userId', validate(userValidation.deleteUser), firebaseAuth('Adm
 
 // to soft delete a user
 router.post('/delete/:userId', validate(userValidation.deleteUser), firebaseAuth('All'), userController.softDeleteUser);
+
+
+router.get('/public/blogs',publicblogController.getPublicBlogs);
+router.get('/public/blogs/category/:categoryId', publicblogController.getBlogsByCategory);
 
 module.exports = router;

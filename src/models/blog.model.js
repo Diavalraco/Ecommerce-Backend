@@ -17,7 +17,7 @@ const blogSchema = new mongoose.Schema(
       required: true,
     },
     thumbnail: {
-      type: String,
+      type: mongoose.Schema.Types.Mixed,
       default: null,
     },
     videoLink: {
