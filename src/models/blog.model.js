@@ -105,19 +105,48 @@ blogSchema.pre('save', async function(next) {
   if (this.isModified('categories')) {
     if (!this.isNew) {
       const original = await this.constructor.findById(this._id);
-      if (original) {
-        await mongoose.model('Category').updateMany({_id: {$in: original.categories}}, {$inc: {usedCount: -1}});
+      if (original && original.categories.length) {
+        await mongoose.model('Category').updateMany(
+          {
+            _id: {$in: original.categories},
+            usedCount: {$gt: 0},
+          },
+          {$inc: {usedCount: -1}}
+        );
       }
     }
-    await mongoose.model('Category').updateMany({_id: {$in: this.categories}}, {$inc: {usedCount: 1}});
+    if (this.categories && this.categories.length) {
+      await mongoose.model('Category').updateMany({_id: {$in: this.categories}}, {$inc: {usedCount: 1}});
+    }
   }
   next();
 });
 
 blogSchema.pre('deleteOne', {document: true, query: false}, async function(next) {
-  await mongoose.model('Category').updateMany({_id: {$in: this.categories}}, {$inc: {usedCount: -1}});
+  if (this.categories && this.categories.length) {
+    await mongoose.model('Category').updateMany(
+      {
+        _id: {$in: this.categories},
+        usedCount: {$gt: 0},
+      },
+      {$inc: {usedCount: -1}}
+    );
+  }
   next();
 });
 
+blogSchema.pre('findOneAndDelete', async function(next) {
+  const doc = await this.model.findOne(this.getFilter());
+  if (doc && doc.categories && doc.categories.length) {
+    await mongoose.model('Category').updateMany(
+      {
+        _id: {$in: doc.categories},
+        usedCount: {$gt: 0},
+      },
+      {$inc: {usedCount: -1}}
+    );
+  }
+  next();
+});
 const Blog = mongoose.model('Blog', blogSchema);
 module.exports = Blog;
