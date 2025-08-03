@@ -13,7 +13,6 @@ const {errorConverter, errorHandler} = require('./middlewares/error');
 
 const app = express();
 
-//Morgan will handle logging HTTP requests,
 // while winston logger will take care of your application-specific logs
 if (config.env !== 'test') {
   app.use(morgan.successHandler);
