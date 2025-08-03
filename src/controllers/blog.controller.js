@@ -138,21 +138,18 @@ const createBlog = catchAsync(async (req, res) => {
       thumbnail: thumbnailUrl,
     };
 
-    // 6) Create & then re-fetch with populate
     const created = await Blog.create(blogData);
     const blog = await Blog.findById(created._id)
       .populate('author', 'name profileImage instagramHandle')
       .populate('categories', 'name image')
       .populate('topics', 'name');
 
-    // 7) Return
     return res.status(httpStatus.CREATED).json({
       status: true,
       message: 'Blog created successfully',
       data: blog,
     });
   } catch (error) {
-    // Clean up the thumbnail if it was uploaded
     if (thumbnailUrl) {
       const publicId = extractPublicId(thumbnailUrl);
       if (publicId) await deleteImage(publicId);
@@ -165,7 +162,18 @@ const createBlog = catchAsync(async (req, res) => {
   }
 });
 
-const updateBlog = async (req, res) => {
+const updateBlog = catchAsync(async (req, res) => {
+  let newThumbnailUrl = null;
+  const blog = await Blog.findById(req.params.id);
+  if (!blog) {
+    return res.status(httpStatus.NOT_FOUND).json({
+      status: false,
+      message: 'Blog not found',
+    });
+  }
+
+  const oldThumbnail = blog.thumbnail;
+
   try {
     const {
       title,
@@ -180,64 +188,97 @@ const updateBlog = async (req, res) => {
       popular,
       order,
     } = req.body;
-    const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
 
-    const oldThumbnail = blog.thumbnail;
-    blog.title = title || blog.title;
-    blog.description = description || blog.description;
-    blog.content = content || blog.content;
-    blog.videoLink = videoLink || blog.videoLink;
-    blog.author = author || blog.author;
-    blog.status = status || blog.status;
-    blog.featured = featured !== undefined ? featured === 'true' : blog.featured;
-    blog.popular = popular !== undefined ? popular === 'true' : blog.popular;
-    blog.order = order !== undefined ? order : blog.order;
-    if (categories) blog.categories = JSON.parse(categories);
-    if (topics) blog.topics = JSON.parse(topics);
-    if (req.file) {
-      blog.thumbnail = req.file.path;
+    if (title !== undefined) blog.title = title.trim();
+    if (description !== undefined) blog.description = description.trim();
+    if (content !== undefined) blog.content = content;
+    if (videoLink !== undefined) blog.videoLink = videoLink || undefined;
+    if (author !== undefined) blog.author = author;
+    if (status !== undefined) blog.status = status;
+    if (featured !== undefined) blog.featured = featured === 'true';
+    if (popular !== undefined) blog.popular = popular === 'true';
+    if (order !== undefined) blog.order = parseInt(order, 10) || 0;
+
+    const parseIds = field => {
+      if (!field) return null;
+      if (Array.isArray(field)) return field;
+      if (typeof field === 'string' && field.trim()) {
+        try {
+          const parsed = JSON.parse(field);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {}
+        return field.split(',').map(id => id.trim());
+      }
+      return [];
+    };
+    const catIds = parseIds(categories);
+    if (catIds) blog.categories = catIds;
+    const topIds = parseIds(topics);
+    if (topIds) blog.topics = topIds;
+
+    if (req.file && req.file.buffer) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream({folder: 'blog-management/thumbnails'}, (err, uploaded) =>
+          err ? reject(err) : resolve(uploaded)
+        );
+        stream.end(req.file.buffer);
+      });
+      newThumbnailUrl = result.secure_url;
+      blog.thumbnail = newThumbnailUrl;
+
       if (oldThumbnail) {
-        const publicId = extractPublicId(oldThumbnail);
-        if (publicId) await deleteImage(publicId);
+        const oldPubId = extractPublicId(oldThumbnail);
+        if (oldPubId) await deleteImage(oldPubId);
       }
     }
 
     await blog.save();
-    await blog.populate('author categories topics');
-    res.json({success: true, message: 'Blog updated successfully', data: blog});
-  } catch (error) {
-    if (req.file) {
-      const publicId = extractPublicId(req.file.path);
-      if (publicId) await deleteImage(publicId);
+    const updated = await Blog.findById(blog._id)
+      .populate('author', 'name profileImage instagramHandle')
+      .populate('categories', 'name image')
+      .populate('topics', 'name');
+
+    return res.status(httpStatus.OK).json({
+      status: true,
+      message: 'Blog updated successfully',
+      data: updated,
+    });
+  } catch (err) {
+    if (newThumbnailUrl) {
+      const pubId = extractPublicId(newThumbnailUrl);
+      if (pubId) await deleteImage(pubId);
     }
-    res.status(400).json({
-      success: false,
+    return res.status(httpStatus.BAD_REQUEST).json({
+      status: false,
       message: 'Error updating blog',
-      error: error.message,
+      error: err.message,
     });
   }
-};
+});
 
-const deleteBlog = async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
-    if (blog.thumbnail) {
-      const publicId = extractPublicId(blog.thumbnail);
-      if (publicId) await deleteImage(publicId);
+const deleteBlog = catchAsync(async (req, res) => {
+  const blog = await Blog.findById(req.params.id);
+  if (!blog) {
+    return res.status(httpStatus.NOT_FOUND).json({
+      status: false,
+      message: 'Blog not found',
+    });
+  }
+
+  if (blog.thumbnail) {
+    const publicId = extractPublicId(blog.thumbnail);
+    if (publicId) {
+      await deleteImage(publicId);
     }
-    await blog.deleteOne();
-    res.json({success: true, message: 'Blog deleted successfully'});
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting blog',
-      error: error.message,
-    });
   }
-};
 
+  await blog.deleteOne();
+  return res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Blog deleted successfully',
+    data: blog,
+  });
+});
 const toggleBlogStatus = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
