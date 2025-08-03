@@ -6,8 +6,9 @@ const authService = require('../services/auth.service');
 const firebaseAuth = (requiredRole = 'any') => async (req, res, next) => {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+
   if (!token) {
-    return next(new ApiError('Please authenticate', httpStatus.BAD_REQUEST));
+    return next(new ApiError(httpStatus.BAD_REQUEST, 'Please authenticate'));
   }
 
   try {
@@ -19,17 +20,17 @@ const firebaseAuth = (requiredRole = 'any') => async (req, res, next) => {
         req.newUser = payload;
         req.defaultRole = requiredRole === 'admin' ? 'admin' : 'user';
       } else {
-        throw new ApiError("User doesn't exist. Please register.", httpStatus.NOT_FOUND);
+        throw new ApiError(httpStatus.NOT_FOUND, "User doesn't exist. Please register.");
       }
     } else {
       if (requiredRole !== 'any' && existing.role !== requiredRole && requiredRole !== 'both') {
-        throw new ApiError("You don't have permission", httpStatus.FORBIDDEN);
+        throw new ApiError(httpStatus.FORBIDDEN, "You don't have permission");
       }
       if (existing.isBlocked) {
-        throw new ApiError('User is blocked', httpStatus.FORBIDDEN);
+        throw new ApiError(httpStatus.FORBIDDEN, 'User is blocked');
       }
       if (existing.isDeleted) {
-        throw new ApiError("User doesn't exist anymore", httpStatus.GONE);
+        throw new ApiError(httpStatus.GONE, "User doesn't exist anymore");
       }
       req.user = existing;
     }
@@ -37,10 +38,10 @@ const firebaseAuth = (requiredRole = 'any') => async (req, res, next) => {
     return next();
   } catch (err) {
     if (err.code === 'auth/id-token-expired') {
-      return next(new ApiError('Session expired', httpStatus.UNAUTHORIZED));
+      return next(new ApiError(httpStatus.UNAUTHORIZED, 'Session expired'));
     }
     console.error('FirebaseAuthError:', err);
-    return next(new ApiError('Failed to authenticate', httpStatus.UNAUTHORIZED));
+    return next(new ApiError(httpStatus.UNAUTHORIZED, 'Failed to authenticate'));
   }
 };
 

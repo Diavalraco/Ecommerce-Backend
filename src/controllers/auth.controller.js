@@ -29,7 +29,7 @@ const registerUser = catchAsync(async (req, res) => {
 
   const user = await authService.createUser(userObj);
   if (!user) {
-    throw new ApiError('User registration failed', httpStatus.INTERNAL_SERVER_ERROR);
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'User registration failed');
   }
 
   res.status(httpStatus.CREATED).json({
@@ -50,7 +50,7 @@ const loginUser = catchAsync(async (req, res) => {
 const generateToken = catchAsync(async (req, res) => {
   const {uid} = req.body;
   if (!uid) {
-    throw new ApiError('uid is required', httpStatus.BAD_REQUEST);
+    throw new ApiError(httpStatus.BAD_REQUEST, 'uid is required');
   }
 
   const customToken = await admin.auth().createCustomToken(uid);
@@ -64,7 +64,7 @@ const generateToken = catchAsync(async (req, res) => {
   );
 
   if (!response.ok) {
-    throw new ApiError('Failed to exchange custom token', httpStatus.BAD_GATEWAY);
+    throw new ApiError(httpStatus.BAD_GATEWAY, 'Failed to exchange custom token');
   }
 
   const {idToken} = await response.json();
@@ -78,13 +78,13 @@ const generateToken = catchAsync(async (req, res) => {
 const forgotPassword = catchAsync(async (req, res) => {
   const {email} = req.body;
   if (!email) {
-    throw new ApiError('Email is required', httpStatus.BAD_REQUEST);
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Email is required');
   }
 
   try {
     await admin.auth().getUserByEmail(email);
   } catch {
-    throw new ApiError('Email not registered', httpStatus.NOT_FOUND);
+    throw new ApiError(httpStatus.NOT_FOUND, 'Email not registered');
   }
 
   const url = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${config.firebase.apiKey}`;
@@ -96,7 +96,7 @@ const forgotPassword = catchAsync(async (req, res) => {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new ApiError(data.error?.message || 'Failed to send reset email', httpStatus.INTERNAL_SERVER_ERROR);
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, data.error?.message || 'Failed to send reset email');
   }
 
   res.status(httpStatus.OK).json({
