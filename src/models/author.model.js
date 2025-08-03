@@ -1,4 +1,3 @@
-// src/models/author.model.js
 const mongoose = require('mongoose');
 const { paginate } = require('./plugins/paginate');
 

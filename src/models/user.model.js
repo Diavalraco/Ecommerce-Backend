@@ -9,6 +9,10 @@ const userSchema = new mongoose.Schema(
     role: {type: String, enum: ['user', 'admin'], default: 'user'},
     isBlocked: {type: Boolean, default: false},
     isDeleted: {type: Boolean, default: false},
+    fullName: {type: String, trim: true, default: null},
+    gender: {type: String, enum: ['male', 'female', 'other'], default: null},
+    dateOfBirth: {type: Date, default: null},
+    profileImage: {type: String, default: null},
   },
   {timestamps: true}
 );

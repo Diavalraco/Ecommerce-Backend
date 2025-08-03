@@ -8,30 +8,26 @@ cloudinary.config({
 
 const deleteImage = async publicId => {
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
-    return result;
-  } catch (error) {
-    console.error('Error deleting image from Cloudinary:', error);
-    throw error;
+    return await cloudinary.uploader.destroy(publicId);
+  } catch (err) {
+    console.error('Cloudinary deletion error:', err);
+    throw err;
   }
 };
 
 const extractPublicId = url => {
   if (!url) return null;
-
   const parts = url.split('/');
-  const fileName = parts[parts.length - 1];
-  const publicId = fileName.split('.')[0];
-
-  const folderIndex = parts.findIndex(part => part === 'blog-management');
-  if (folderIndex !== -1) {
-    const folderPath = parts.slice(folderIndex, -1).join('/');
-    return `${folderPath}/${publicId}`;
+  const fileName = parts.pop();
+  const publicId = fileName.split('.').shift();
+  const folderIdx = parts.indexOf('blog-management');
+  if (folderIdx >= 0) {
+    return parts
+      .slice(folderIdx)
+      .concat(publicId)
+      .join('/');
   }
-
   return publicId;
 };
 
-module.exports = cloudinary;
-module.exports.deleteImage = deleteImage;
-module.exports.extractPublicId = extractPublicId;
+module.exports = {cloudinary, deleteImage, extractPublicId};

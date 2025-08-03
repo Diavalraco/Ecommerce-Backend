@@ -5,6 +5,7 @@ const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 const config = require('../config/config');
 const authService = require('../services/auth.service');
+const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
 
 const createNewUserObject = (newUser, defaultRole) => ({
   email: newUser.email || null,
@@ -105,9 +106,44 @@ const forgotPassword = catchAsync(async (req, res) => {
   });
 });
 
+const updateProfile = catchAsync(async (req, res) => {
+  const userId = req.user._id;
+  const updateData = {};
+
+  if (req.body.fullName) updateData.fullName = req.body.fullName;
+  if (req.body.gender) updateData.gender = req.body.gender;
+  if (req.body.dateOfBirth) updateData.dateOfBirth = req.body.dateOfBirth;
+
+  let newUrl = null;
+  if (req.file && req.file.buffer) {
+    const uploadRes = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream({folder: 'blog-management'}, (err, result) =>
+        err ? reject(err) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+    newUrl = uploadRes.secure_url;
+    updateData.profileImage = newUrl;
+
+    if (req.user.profileImage) {
+      const oldPubId = extractPublicId(req.user.profileImage);
+      if (oldPubId) await deleteImage(oldPubId);
+    }
+  }
+
+  const updated = await authService.updateUserById(userId, updateData);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Profile updated successfully',
+    data: updated,
+  });
+});
+
 module.exports = {
   registerUser,
   loginUser,
   generateToken,
   forgotPassword,
+  updateProfile,
 };
