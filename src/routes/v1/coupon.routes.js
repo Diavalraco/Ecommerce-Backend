@@ -28,4 +28,6 @@ router.patch(
   couponController.toggleCouponStatus
 );
 
+router.get('/public/coupons', couponController.getPublicCoupons);
+
 module.exports = router;

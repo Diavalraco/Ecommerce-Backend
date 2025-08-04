@@ -118,6 +118,46 @@ const toggleCouponStatus = catchAsync(async (req, res) => {
   });
 });
 
+const getPublicCoupons = catchAsync(async (req, res) => {
+  const {page = 1, limit = 10, search = '', sort = 'new_to_old', discountType} = req.query;
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {status: 'active'};
+
+  if (search.trim()) {
+    const s = search.trim();
+    query.$or = [{code: {$regex: s, $options: 'i'}}, {discountType: {$regex: s, $options: 'i'}}];
+  }
+
+  if (discountType) {
+    query.discountType = discountType;
+  }
+
+  const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
+
+  const [coupons, totalCount] = await Promise.all([
+    Coupon.find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitNum),
+    Coupon.countDocuments(query),
+  ]);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: coupons,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
+  });
+});
+
 module.exports = {
   getAllCoupons,
   getCouponById,
@@ -125,4 +165,5 @@ module.exports = {
   updateCoupon,
   deleteCoupon,
   toggleCouponStatus,
+  getPublicCoupons,
 };

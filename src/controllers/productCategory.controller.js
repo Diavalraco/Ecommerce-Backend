@@ -1,4 +1,3 @@
-// controllers/productCategory.controller.js
 const ProductCategory = require('../models/productCategory.model');
 const catchAsync = require('../utils/catchAsync');
 const httpStatus = require('http-status');
