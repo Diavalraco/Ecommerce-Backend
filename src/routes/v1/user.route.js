@@ -35,7 +35,7 @@ router.delete('/:userId', validate(userValidation.deleteUser), firebaseAuth('Adm
 // to soft delete a user
 router.post('/delete/:userId', validate(userValidation.deleteUser), firebaseAuth('All'), userController.softDeleteUser);
 
-router.get('/public/blogs', firebaseAuth('user'), userController.getPublicBlogs);
+router.get('/public/blogs', userController.getPublicBlogs);
 router.get('/public/blogs/category/:categoryId', publicblogController.getBlogsByCategory);
 router.get('/public/categories', CategoryController.getAllCategories);
 router.get('/public/blogs/:id', userController.getBlogById);

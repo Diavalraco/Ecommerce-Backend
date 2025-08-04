@@ -53,17 +53,17 @@ const getPublicBlogs = catchAsync(async (req, res) => {
   if (featured === 'true') query.featured = true;
   if (popular === 'true') query.popular = true;
 
-  if (favorites === 'true') {
-    if (!req.user || !req.user._id) {
-      return res.status(httpStatus.UNAUTHORIZED).json({
-        status: false,
-        message: 'Authentication required to filter by favorites',
-      });
-    }
-    const favs = await Favorite.find({user: req.user._id}).select('blog');
-    const blogIds = favs.map(f => f.blog);
-    query._id = {$in: blogIds};
-  }
+  // if (favorites === 'true') {
+  //   if (!req.user || !req.user._id) {
+  //     return res.status(httpStatus.UNAUTHORIZED).json({
+  //       status: false,
+  //       message: 'Authentication required to filter by favorites',
+  //     });
+  //   }
+  //   const favs = await Favorite.find({user: req.user._id}).select('blog');
+  //   const blogIds = favs.map(f => f.blog);
+  //   query._id = {$in: blogIds};
+  // }
 
   const [blogs, totalCount] = await Promise.all([
     Blog.find(query)
