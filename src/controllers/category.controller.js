@@ -1,57 +1,51 @@
 const Category = require('../models/category.model');
 const Blog = require('../models/blog.model');
 const Topic = require('../models/topic.model');
-const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const path = require('path');
+// const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const {uploadImage, deleteImage, extractKey} = require('../config/r2');
 const catchAsync = require('../utils/catchAsync');
 const httpStatus = require('http-status');
 
 const getAllCategories = catchAsync(async (req, res) => {
-    const {
-      page = 1,
-      limit = 10,
-      search = '',
-      status,
-      featured,
-      popular,
-    } = req.query;
-  
-    const pageNum  = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const skip     = (pageNum - 1) * limitNum;
-  
-    const query = {};
-    if (search.trim() !== '') {
-      query.name = { $regex: search.trim(), $options: 'i' };
-    }
-    if (status) {
-      query.status = status;
-    }
-    if (featured === 'true') {
-      query.featured = true;
-    }
-    if (popular === 'true') {
-      query.popular = true;
-    }
-  
-    const categories = await Category.find(query)
-      .sort({ order: 1, createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
-  
-    const totalCount = await Category.countDocuments(query);
-  
-    res.status(httpStatus.OK).json({
-      status: true,
-      data: {
-        page: pageNum,
-        limit: limitNum,
-        results: categories,
-        totalPages: Math.ceil(totalCount / limitNum),
-        totalResults: totalCount,
-      },
-    });
+  const {page = 1, limit = 10, search = '', status, featured, popular} = req.query;
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {};
+  if (search.trim() !== '') {
+    query.name = {$regex: search.trim(), $options: 'i'};
+  }
+  if (status) {
+    query.status = status;
+  }
+  if (featured === 'true') {
+    query.featured = true;
+  }
+  if (popular === 'true') {
+    query.popular = true;
+  }
+
+  const categories = await Category.find(query)
+    .sort({order: 1, createdAt: -1})
+    .skip(skip)
+    .limit(limitNum);
+
+  const totalCount = await Category.countDocuments(query);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: categories,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
   });
-  
+});
 
 const getCategoryById = async (req, res) => {
   try {
@@ -68,19 +62,22 @@ const getCategoryById = async (req, res) => {
 };
 
 const createCategory = catchAsync(async (req, res) => {
-  let uploadedUrl = null;
+  let newKey = null;
 
   try {
     const {name, status, featured, popular, order} = req.body;
 
+    let signedUrl = null;
+
     if (req.file && req.file.buffer) {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'blog-management/categories'}, (err, uploaded) =>
-          err ? reject(err) : resolve(uploaded)
-        );
-        stream.end(req.file.buffer);
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/categories/${Date.now()}${ext}`;
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
       });
-      uploadedUrl = result.secure_url;
+      signedUrl = result.url;
     }
 
     const category = new Category({
@@ -89,7 +86,7 @@ const createCategory = catchAsync(async (req, res) => {
       featured: featured === 'true',
       popular: popular === 'true',
       order: parseInt(order, 10) || 0,
-      image: uploadedUrl,
+      image: signedUrl,
     });
 
     await category.save();
@@ -100,9 +97,8 @@ const createCategory = catchAsync(async (req, res) => {
       data: category,
     });
   } catch (error) {
-    if (uploadedUrl) {
-      const publicId = extractPublicId(uploadedUrl);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     res.status(400).json({
       success: false,
@@ -112,74 +108,91 @@ const createCategory = catchAsync(async (req, res) => {
   }
 });
 
-const updateCategory = async (req, res) => {
+const updateCategory = catchAsync(async (req, res) => {
+  let newKey = null;
+
   try {
     const {name, status, featured, popular, order} = req.body;
     const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({success: false, message: 'Category not found'});
+    if (!category) {
+      return res.status(httpStatus.NOT_FOUND).json({success: false, message: 'Category not found'});
+    }
 
-    const oldImage = category.image;
+    const oldImageUrl = category.image;
+
     category.name = name || category.name;
     category.status = status || category.status;
     category.featured = featured !== undefined ? featured === 'true' : category.featured;
     category.popular = popular !== undefined ? popular === 'true' : category.popular;
-    category.order = order !== undefined ? order : category.order;
-    if (req.file) {
-      category.image = req.file.path;
-      if (oldImage) {
-        const publicId = extractPublicId(oldImage);
-        if (publicId) await deleteImage(publicId);
+    category.order = order !== undefined ? parseInt(order, 10) : category.order;
+
+    if (req.file && req.file.buffer) {
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/categories/${Date.now()}${ext}`;
+
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
+      });
+      category.image = result.url;
+
+      if (oldImageUrl) {
+        const oldKey = extractKey(oldImageUrl);
+        if (oldKey) await deleteImage(oldKey);
       }
     }
 
     await category.save();
+
     res.json({
       success: true,
       message: 'Category updated successfully',
       data: category,
     });
   } catch (error) {
-    if (req.file) {
-      const publicId = extractPublicId(req.file.path);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
-    res.status(400).json({
+    res.status(httpStatus.BAD_REQUEST).json({
       success: false,
       message: 'Error updating category',
       error: error.message,
     });
   }
-};
+});
 
-const deleteCategory = async (req, res) => {
+const deleteCategory = catchAsync(async (req, res) => {
   try {
     const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({success: false, message: 'Category not found'});
+    if (!category) {
+      return res.status(httpStatus.NOT_FOUND).json({success: false, message: 'Category not found'});
+    }
 
     const blogCount = await Blog.countDocuments({categories: req.params.id});
     const topicCount = await Topic.countDocuments({categories: req.params.id});
     if (blogCount > 0 || topicCount > 0) {
-      return res.status(400).json({
+      return res.status(httpStatus.BAD_REQUEST).json({
         success: false,
         message: 'Cannot delete category. Category has associated blogs or topics.',
       });
     }
 
     if (category.image) {
-      const publicId = extractPublicId(category.image);
-      if (publicId) await deleteImage(publicId);
+      const key = extractKey(category.image);
+      if (key) await deleteImage(key);
     }
 
     await category.deleteOne();
     res.json({success: true, message: 'Category deleted successfully'});
   } catch (error) {
-    res.status(500).json({
+    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: 'Error deleting category',
       error: error.message,
     });
   }
-};
+});
 
 const toggleCategoryStatus = async (req, res) => {
   try {

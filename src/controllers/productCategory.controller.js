@@ -1,7 +1,9 @@
 const ProductCategory = require('../models/productCategory.model');
+const path = require('path');
 const catchAsync = require('../utils/catchAsync');
 const httpStatus = require('http-status');
-const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+// const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const { uploadImage, deleteImage, extractKey } = require('../config/r2');
 
 const getAllProductCategories = catchAsync(async (req, res) => {
   const {page = 1, limit = 10, search = '', sort = 'new_to_old'} = req.query;
@@ -51,22 +53,27 @@ const getProductCategoryById = catchAsync(async (req, res) => {
 });
 
 const createProductCategory = catchAsync(async (req, res) => {
-  let thumbnailUrl;
+  let newKey = null;
+
   try {
+    const {name, description, order} = req.body;
+
+    let thumbnailUrl = null;
     if (req.file && req.file.buffer) {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'product-management/categories'}, (err, uploaded) =>
-          err ? reject(err) : resolve(uploaded)
-        );
-        stream.end(req.file.buffer);
+      const ext = path.extname(req.file.originalname);
+      newKey = `product-management/categories/${Date.now()}${ext}`;
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
       });
-      thumbnailUrl = result.secure_url;
+      thumbnailUrl = result.url;
     }
 
     const payload = {
-      name: req.body.name.trim(),
-      description: req.body.description.trim(),
-      order: req.body.order ? parseInt(req.body.order, 10) : 0,
+      name: name.trim(),
+      description: description.trim(),
+      order: order ? parseInt(order, 10) : 0,
       thumbnail: thumbnailUrl,
     };
 
@@ -78,9 +85,8 @@ const createProductCategory = catchAsync(async (req, res) => {
       data: created,
     });
   } catch (err) {
-    if (thumbnailUrl) {
-      const publicId = extractPublicId(thumbnailUrl);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     return res.status(httpStatus.BAD_REQUEST).json({
       status: false,
@@ -91,38 +97,40 @@ const createProductCategory = catchAsync(async (req, res) => {
 });
 
 const updateProductCategory = catchAsync(async (req, res) => {
+  let newKey = null;
   const category = await ProductCategory.findById(req.params.id);
+
   if (!category) {
-    return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'ProductCategory not found'});
+    return res.status(httpStatus.NOT_FOUND).json({
+      status: false,
+      message: 'ProductCategory not found',
+    });
   }
 
-  let newThumbnailUrl;
   const oldThumbnail = category.thumbnail;
 
   try {
-    if (req.body.name !== undefined) {
-      category.name = req.body.name.trim();
-    }
-    if (req.body.description !== undefined) {
-      category.description = req.body.description.trim();
-    }
-    if (req.body.order !== undefined) {
-      category.order = parseInt(req.body.order, 10) || 0;
-    }
+    const {name, description, order} = req.body;
+
+    if (name !== undefined) category.name = name.trim();
+    if (description !== undefined) category.description = description.trim();
+    if (order !== undefined) category.order = parseInt(order, 10) || 0;
 
     if (req.file && req.file.buffer) {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'product-management/categories'}, (err, uploaded) =>
-          err ? reject(err) : resolve(uploaded)
-        );
-        stream.end(req.file.buffer);
+      const ext = path.extname(req.file.originalname);
+      newKey = `product-management/categories/${Date.now()}${ext}`;
+
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
       });
-      newThumbnailUrl = result.secure_url;
-      category.thumbnail = newThumbnailUrl;
+
+      category.thumbnail = result.url;
 
       if (oldThumbnail) {
-        const oldPubId = extractPublicId(oldThumbnail);
-        if (oldPubId) await deleteImage(oldPubId);
+        const oldKey = extractKey(oldThumbnail);
+        if (oldKey) await deleteImage(oldKey);
       }
     }
 
@@ -134,9 +142,8 @@ const updateProductCategory = catchAsync(async (req, res) => {
       data: category,
     });
   } catch (err) {
-    if (newThumbnailUrl) {
-      const pubId = extractPublicId(newThumbnailUrl);
-      if (pubId) await deleteImage(pubId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     return res.status(httpStatus.BAD_REQUEST).json({
       status: false,
@@ -148,15 +155,17 @@ const updateProductCategory = catchAsync(async (req, res) => {
 
 const deleteProductCategory = catchAsync(async (req, res) => {
   const category = await ProductCategory.findById(req.params.id);
+
   if (!category) {
-    return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'ProductCategory not found'});
+    return res.status(httpStatus.NOT_FOUND).json({
+      status: false,
+      message: 'ProductCategory not found',
+    });
   }
 
   if (category.thumbnail) {
-    const publicId = extractPublicId(category.thumbnail);
-    if (publicId) {
-      await deleteImage(publicId);
-    }
+    const key = extractKey(category.thumbnail);
+    if (key) await deleteImage(key);
   }
 
   await category.deleteOne();

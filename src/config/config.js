@@ -4,7 +4,7 @@ const dotnev = require('dotenv');
 
 dotnev.config({path: path.join(__dirname, '../../.env')});
 
-const parseKey = (key) => {
+const parseKey = key => {
   if (!key) return key;
   let cleanKey = key.replace(/^["']|["']$/g, '');
   cleanKey = cleanKey.replace(/\\n/g, '\n');
@@ -81,7 +81,7 @@ module.exports = {
     type: envVars.FIREBASE_TYPE,
     project_id: envVars.FIREBASE_PROJECT_ID,
     private_key_id: envVars.FIREBASE_PRIVATE_KEY_ID,
-    private_key:parseKey(envVars.FIREBASE_PRIVATE_KEY),
+    private_key: parseKey(envVars.FIREBASE_PRIVATE_KEY),
     client_email: envVars.FIREBASE_CLIENT_EMAIL,
     client_id: envVars.FIREBASE_CLIENT_ID,
     auth_uri: envVars.FIREBASE_AUTH_URI,
@@ -91,6 +91,16 @@ module.exports = {
     universe_domain: envVars.FIREBASE_UNIVERSE_DOMAIN,
     apiKey: envVars.FIREBASE_API_KEY,
   },
+  cloudflare: {
+    r2: {
+      bucketName: envVars.R2_BUCKET_NAME,
+      accountId: envVars.R2_ACCOUNT_ID,
+      endpoint: envVars.R2_ENDPOINT,
+      accessKeyId: envVars.R2_ACCESS_KEY_ID,
+      secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
+    },
+  },
+
   //  twilio: {
   //   accountSid: envVars.TWILIO_ACCOUNT_SID,
   //   authToken: envVars.TWILIO_AUTH_TOKEN,

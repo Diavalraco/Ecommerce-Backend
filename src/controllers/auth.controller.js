@@ -4,8 +4,10 @@ const ApiError = require('../utils/ApiError');
 const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 const config = require('../config/config');
+const path = require('path');
 const authService = require('../services/auth.service');
-const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+// const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const {uploadImage, deleteImage, extractKey} = require('../config/r2');
 
 const createNewUserObject = (newUser, defaultRole) => ({
   email: newUser.email || null,
@@ -114,23 +116,24 @@ const updateProfile = catchAsync(async (req, res) => {
   if (req.body.gender) updateData.gender = req.body.gender;
   if (req.body.dateOfBirth) updateData.dateOfBirth = req.body.dateOfBirth;
 
-  let newUrl = null;
   if (req.file && req.file.buffer) {
-    const uploadRes = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream({folder: 'blog-management'}, (err, result) =>
-        err ? reject(err) : resolve(result)
-      );
-      stream.end(req.file.buffer);
+    const ext = path.extname(req.file.originalname);
+    const key = `blog-management/${userId}-${Date.now()}${ext}`;
+    const {url: signedUrl, key: newKey} = await uploadImage({
+      buffer: req.file.buffer,
+      key,
+      contentType: req.file.mimetype,
     });
-    newUrl = uploadRes.secure_url;
-    updateData.profileImage = newUrl;
+
+    updateData.profileImage = signedUrl;
 
     if (req.user.profileImage) {
-      const oldPubId = extractPublicId(req.user.profileImage);
-      if (oldPubId) await deleteImage(oldPubId);
+      const oldKey = extractKey(req.user.profileImage);
+      if (oldKey) {
+        await deleteImage(oldKey);
+      }
     }
   }
-
   const updated = await authService.updateUserById(userId, updateData);
 
   res.status(httpStatus.OK).json({

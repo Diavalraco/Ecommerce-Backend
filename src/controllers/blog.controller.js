@@ -2,9 +2,11 @@ const Blog = require('../models/blog.model');
 const Author = require('../models/author.model');
 const Category = require('../models/category.model');
 const Topic = require('../models/topic.model');
+const path = require('path');
 const catchAsync = require('../utils/catchAsync');
 const httpStatus = require('http-status');
-const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+// const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const {uploadImage, deleteImage, extractKey} = require('../config/r2');
 
 const getAllBlogs = catchAsync(async (req, res) => {
   const {page = 1, limit = 10, search = '', status, featured, popular, category, topic, author} = req.query;
@@ -52,7 +54,7 @@ const getAllBlogs = catchAsync(async (req, res) => {
 
 const getBlogById = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id,)
+    const blog = await Blog.findById(req.params.id)
       .populate('author')
       .populate('categories')
       .populate('topics');
@@ -68,7 +70,7 @@ const getBlogById = async (req, res) => {
 };
 
 const createBlog = catchAsync(async (req, res) => {
-  let thumbnailUrl = null;
+  let newKey = null;
 
   try {
     const {
@@ -112,15 +114,16 @@ const createBlog = catchAsync(async (req, res) => {
         }
       }
     }
-
+    let signedUrl = null;
     if (req.file && req.file.buffer) {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'blog-management/thumbnails'}, (err, uploaded) =>
-          err ? reject(err) : resolve(uploaded)
-        );
-        stream.end(req.file.buffer);
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/thumbnails/${Date.now()}${ext}`;
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
       });
-      thumbnailUrl = result.secure_url;
+      signedUrl = result.url;
     }
 
     const blogData = {
@@ -135,7 +138,7 @@ const createBlog = catchAsync(async (req, res) => {
       featured: featured === 'true',
       popular: popular === 'true',
       order: parseInt(order, 10) || 0,
-      thumbnail: thumbnailUrl,
+      thumbnail: signedUrl,
     };
 
     const created = await Blog.create(blogData);
@@ -150,9 +153,8 @@ const createBlog = catchAsync(async (req, res) => {
       data: blog,
     });
   } catch (error) {
-    if (thumbnailUrl) {
-      const publicId = extractPublicId(thumbnailUrl);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     return res.status(httpStatus.BAD_REQUEST).json({
       status: false,
@@ -163,7 +165,7 @@ const createBlog = catchAsync(async (req, res) => {
 });
 
 const updateBlog = catchAsync(async (req, res) => {
-  let newThumbnailUrl = null;
+  let newKey = null;
   const blog = await Blog.findById(req.params.id);
   if (!blog) {
     return res.status(httpStatus.NOT_FOUND).json({
@@ -217,18 +219,18 @@ const updateBlog = catchAsync(async (req, res) => {
     if (topIds) blog.topics = topIds;
 
     if (req.file && req.file.buffer) {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'blog-management/thumbnails'}, (err, uploaded) =>
-          err ? reject(err) : resolve(uploaded)
-        );
-        stream.end(req.file.buffer);
-      });
-      newThumbnailUrl = result.secure_url;
-      blog.thumbnail = newThumbnailUrl;
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/thumbnails/${Date.now()}${ext}`;
 
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
+      });
+      blog.thumbnail = result.url;
       if (oldThumbnail) {
-        const oldPubId = extractPublicId(oldThumbnail);
-        if (oldPubId) await deleteImage(oldPubId);
+        const oldKey = extractKey(oldThumbnail);
+        if (oldKey) await deleteImage(oldKey);
       }
     }
 
@@ -244,9 +246,8 @@ const updateBlog = catchAsync(async (req, res) => {
       data: updated,
     });
   } catch (err) {
-    if (newThumbnailUrl) {
-      const pubId = extractPublicId(newThumbnailUrl);
-      if (pubId) await deleteImage(pubId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     return res.status(httpStatus.BAD_REQUEST).json({
       status: false,
@@ -265,11 +266,9 @@ const deleteBlog = catchAsync(async (req, res) => {
     });
   }
 
-  if (blog.thumbnail) {
-    const publicId = extractPublicId(blog.thumbnail);
-    if (publicId) {
-      await deleteImage(publicId);
-    }
+  if (blog.image) {
+    const key = extractKey(blog.image);
+    if (key) await deleteImage(key);
   }
 
   await blog.deleteOne();

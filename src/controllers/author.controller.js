@@ -1,8 +1,10 @@
 const Author = require('../models/author.model');
+const path = require('path');
 const Blog = require('../models/blog.model');
 const httpStatus = require('http-status');
 const catchAsync = require('../utils/catchAsync');
-const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+// const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
+const {uploadImage, deleteImage, extractKey} = require('../config/r2');
 
 const getAllAuthors = catchAsync(async (req, res) => {
   const {page = 1, limit = 10, search = '', status} = req.query;
@@ -53,18 +55,21 @@ const getAuthorById = async (req, res) => {
 };
 
 const createAuthor = async (req, res) => {
-  let uploadedUrl = null;
+  let newKey = null;
+  let signedUrl = null;
   try {
     const {name, instagramHandle, description, status, order} = req.body;
 
     if (req.file && req.file.buffer) {
-      const uploadResult = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream({folder: 'blog-management'}, (error, result) =>
-          error ? reject(error) : resolve(result)
-        );
-        stream.end(req.file.buffer);
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/authors/${Date.now()}${ext}`;
+
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
       });
-      uploadedUrl = uploadResult.secure_url;
+      signedUrl = result.url;
     }
 
     const author = new Author({
@@ -73,7 +78,7 @@ const createAuthor = async (req, res) => {
       description,
       status: status || 'active',
       order: order || 0,
-      profileImage: uploadedUrl,
+      profileImage: signedUrl,
     });
     await author.save();
 
@@ -83,9 +88,8 @@ const createAuthor = async (req, res) => {
       data: author,
     });
   } catch (error) {
-    if (uploadedUrl) {
-      const publicId = extractPublicId(uploadedUrl);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
     res.status(400).json({
       success: false,
@@ -95,41 +99,60 @@ const createAuthor = async (req, res) => {
   }
 };
 
-const updateAuthor = async (req, res) => {
+const updateAuthor = catchAsync(async (req, res) => {
   try {
     const {name, instagramHandle, description, status, order} = req.body;
     const author = await Author.findById(req.params.id);
-    if (!author) return res.status(404).json({success: false, message: 'Author not found'});
+    if (!author) {
+      return res.status(httpStatus.NOT_FOUND).json({success: false, message: 'Author not found'});
+    }
 
-    const oldImage = author.profileImage;
+    const oldImageUrl = author.profileImage;
+    let newKey = null,
+      signedUrl = null;
+
     author.name = name || author.name;
     author.instagramHandle = instagramHandle || author.instagramHandle;
     author.description = description || author.description;
     author.status = status || author.status;
-    author.order = order !== undefined ? order : author.order;
-    if (req.file) {
-      author.profileImage = req.file.path;
-      if (oldImage) {
-        const publicId = extractPublicId(oldImage);
-        if (publicId) await deleteImage(publicId);
+    author.order = order ?? author.order;
+
+    if (req.file && req.file.buffer) {
+      const ext = path.extname(req.file.originalname);
+      newKey = `blog-management/authors/${Date.now()}${ext}`;
+
+      const result = await uploadImage({
+        buffer: req.file.buffer,
+        key: newKey,
+        contentType: req.file.mimetype,
+      });
+      signedUrl = result.url;
+
+      author.profileImage = signedUrl;
+
+      if (oldImageUrl) {
+        const oldKey = extractKey(oldImageUrl);
+        if (oldKey) await deleteImage(oldKey);
       }
     }
 
     await author.save();
-    res.json({success: true, message: 'Author updated successfully', data: author});
+    res.json({
+      success: true,
+      message: 'Author updated successfully',
+      data: author,
+    });
   } catch (error) {
-    if (req.file) {
-      const publicId = extractPublicId(req.file.path);
-      if (publicId) await deleteImage(publicId);
+    if (newKey) {
+      await deleteImage(newKey);
     }
-    res.status(400).json({
+    res.status(httpStatus.BAD_REQUEST).json({
       success: false,
       message: 'Error updating author',
       error: error.message,
     });
   }
-};
-
+});
 const deleteAuthor = async (req, res) => {
   try {
     const author = await Author.findById(req.params.id);
@@ -142,10 +165,12 @@ const deleteAuthor = async (req, res) => {
         message: 'Cannot delete author. Author has associated blogs.',
       });
     }
-
+    
     if (author.profileImage) {
-      const publicId = extractPublicId(author.profileImage);
-      if (publicId) await deleteImage(publicId);
+      const key = extractKey(author.profileImage);
+      if (key) {
+        await deleteImage(key);
+      }
     }
 
     await author.deleteOne();
