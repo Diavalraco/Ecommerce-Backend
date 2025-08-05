@@ -1,8 +1,10 @@
+const Category = require('../models/category.model');
 const Products = require('../models/products.model');
 const catchAsync = require('../utils/catchAsync');
 const httpStatus = require('http-status');
 const path = require('path');
 const {uploadImage, deleteImage, extractKey} = require('../config/r2');
+
 // const {cloudinary, deleteImage, extractPublicId} = require('../config/cloudinary');
 const fs = require('fs');
 
@@ -57,10 +59,15 @@ const getAllProducts = catchAsync(async (req, res) => {
 });
 
 const getProductById = catchAsync(async (req, res) => {
-  const product = await Products.findById(req.params.id);
+  const product = await Products.findById(req.params.id).populate({
+    path: 'categories',
+    select: 'name',
+  });
+
   if (!product) {
     return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'Product not found'});
   }
+
   res.status(httpStatus.OK).json({status: true, data: product});
 });
 
@@ -101,6 +108,19 @@ const createProduct = catchAsync(async (req, res) => {
   const categoryIds = parseIds(categories);
   const quantityArray = parseIds(quantityDetails);
   const metadataArray = parseIds(metadata);
+
+  if (categoryIds.length) {
+    const found = await Category.find({
+      _id: {$in: categoryIds},
+      status: 'active',
+    }).select('_id');
+    if (found.length !== categoryIds.length) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: false,
+        message: 'One or more categories are invalid or not active',
+      });
+    }
+  }
 
   let imageUrls = [];
   const newImageKeys = [];
@@ -151,6 +171,10 @@ const createProduct = catchAsync(async (req, res) => {
     };
 
     const created = await Products.create(payload);
+    if (categoryIds.length) {
+      await Category.updateMany({_id: {$in: categoryIds}}, {$inc: {usedCount: 1}});
+    }
+
     return res.status(httpStatus.CREATED).json({
       status: true,
       message: 'Product created successfully',

@@ -84,7 +84,7 @@ const productSchema = new mongoose.Schema(
     },
     categories: {
       type: [mongoose.Schema.Types.ObjectId],
-      ref: 'Categories',
+      ref: 'Category', 
       default: [],
     },
     quantityDetails: {
