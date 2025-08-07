@@ -10,6 +10,7 @@ const CategoryController = require('../../controllers/category.controller');
 const favController = require('../../controllers/favorite.controller');
 const {fileUploadService} = require('../../microservices');
 const UserController = require('../../controllers/user.controller');
+const OrderController = require('../../controllers/order.controller');
 const router = express.Router();
 
 // for updating userDetails
@@ -45,5 +46,8 @@ router.delete('/blogs/:id/favorite', firebaseAuth('user'), favController.unmarkF
 router.get('/products', UserController.getAllProducts);
 router.get('/products/:id', UserController.getProductById);
 
+router.post('/create', firebaseAuth('user'), OrderController.createOrder);
+
+router.post('/apply-coupon', firebaseAuth('user'), OrderController.applyCoupon);
 
 module.exports = router;
