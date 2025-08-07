@@ -3,7 +3,8 @@ const ApiError = require('../utils/ApiError');
 const catchAsync = require('../utils/catchAsync');
 const {userService} = require('../services');
 const Blog = require('../models/blog.model');
-const Favorite = require('../models/favorite.model');
+const Products = require('../models/products.model');
+const {User} = require('../models/user.model');
 const mongoose = require('mongoose');
 
 const updateUser = catchAsync(async (req, res) => {
@@ -105,6 +106,158 @@ const getBlogById = async (req, res) => {
   }
 };
 
+const getAllUsers = catchAsync(async (req, res) => {
+  const {page = 1, limit = 10, search = '', sort = 'new_to_old', blocked} = req.query;
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {};
+  if (search.trim()) {
+    query.fullName = {$regex: search.trim(), $options: 'i'};
+  }
+
+  if (blocked !== undefined) {
+    query.isBlocked = blocked === 'true';
+  }
+
+  const sortObj = {order: 1};
+  if (sort === 'old_to_new') {
+    sortObj.createdAt = 1;
+  } else {
+    sortObj.createdAt = -1;
+  }
+
+  const [users, totalCount] = await Promise.all([
+    User.find(query)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limitNum),
+    User.countDocuments(query),
+  ]);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: users,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
+  });
+});
+
+const getUserById = catchAsync(async (req, res) => {
+  const {userId} = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid user ID');
+  }
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: user,
+  });
+});
+
+const toggleUserBlockStatus = catchAsync(async (req, res) => {
+  const {userId} = req.params;
+  const {isBlocked} = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid user ID');
+  }
+
+  if (typeof isBlocked !== 'boolean') {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'isBlocked must be a boolean value');
+  }
+
+  const user = await User.findByIdAndUpdate(userId, {isBlocked}, {new: true});
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+
+  const message = isBlocked ? 'User has been blocked successfully' : 'User has been unblocked successfully';
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    message,
+    data: user,
+  });
+});
+
+const getAllProducts = catchAsync(async (req, res) => {
+  const {
+    page = 1,
+    limit = 10,
+    search = '',
+    status,
+    sort = 'new_to_old',
+    category,
+    published,
+    popular,
+    featured,
+  } = req.query;
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {status: 'active'};
+  if (search.trim()) {
+    const s = search.trim();
+    query.$or = [{name: {$regex: s, $options: 'i'}}, {description: {$regex: s, $options: 'i'}}];
+  }
+  if (status && status !== 'all') query.status = status;
+  if (category) query.categories = category;
+  if (published === 'true') query.isPublished = true;
+  if (popular === 'true') query.isPopular = true;
+  if (featured === 'true') query.isFeatured = true;
+
+  const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
+
+  const [products, totalCount] = await Promise.all([
+    Products.find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitNum),
+    Products.countDocuments(query),
+  ]);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: products,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
+  });
+});
+
+const getProductById = catchAsync(async (req, res) => {
+  const product = await Products.findById(req.params.id).populate({
+    path: 'categories',
+    select: 'name',
+  });
+
+  if (!product) {
+    return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'Product not found'});
+  }
+
+  res.status(httpStatus.OK).json({status: true, data: product});
+});
+
 module.exports = {
   deleteUser,
   updateUser,
@@ -112,4 +265,9 @@ module.exports = {
   updatePreferences,
   getPublicBlogs,
   getBlogById,
+  getAllUsers,
+  getUserById,
+  toggleUserBlockStatus,
+  getAllProducts,
+  getProductById,
 };

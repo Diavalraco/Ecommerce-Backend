@@ -3,6 +3,7 @@ const router = express.Router();
 const blogController = require('../../controllers/blog.controller');
 const authorController = require('../../controllers/author.controller');
 const CategoryController = require('../../controllers/category.controller');
+const UserController = require('../../controllers/user.controller');
 const firebaseAuth = require('../../middlewares/firebaseAuth');
 const TopicController = require('../../controllers/topic.controller');
 const upload = require('../../middlewares/upload');
@@ -33,5 +34,10 @@ router.put('/topics/:id', firebaseAuth('admin'), TopicController.updateTopic);
 router.delete('/topics/:id', firebaseAuth('admin'), TopicController.deleteTopic);
 
 router.post('/media', upload.single('file'), uploadCtrl);
+router.get('/users', UserController.getAllUsers);
+
+router.get('/users/:userId', UserController.getUserById);
+router.put('/users/:userId/block-status', UserController.toggleUserBlockStatus);
+
 
 module.exports = router;

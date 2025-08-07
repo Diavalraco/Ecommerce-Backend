@@ -37,9 +37,14 @@ const firebaseAuth = (requiredRole = 'any') => async (req, res, next) => {
 
     return next();
   } catch (err) {
+    if (err instanceof ApiError) {
+      return next(err);
+    }
+    
     if (err.code === 'auth/id-token-expired') {
       return next(new ApiError(httpStatus.UNAUTHORIZED, 'Session expired'));
     }
+    
     console.error('FirebaseAuthError:', err);
     return next(new ApiError(httpStatus.UNAUTHORIZED, 'Failed to authenticate'));
   }

@@ -9,7 +9,7 @@ const blogController = require('../../controllers/blog.controller');
 const CategoryController = require('../../controllers/category.controller');
 const favController = require('../../controllers/favorite.controller');
 const {fileUploadService} = require('../../microservices');
-
+const UserController = require('../../controllers/user.controller');
 const router = express.Router();
 
 // for updating userDetails
@@ -42,6 +42,8 @@ router.get('/public/blogs/:id', userController.getBlogById);
 router.post('/blogs/:id/favorite', firebaseAuth('user'), favController.markFavorite);
 
 router.delete('/blogs/:id/favorite', firebaseAuth('user'), favController.unmarkFavorite);
+router.get('/products', UserController.getAllProducts);
+router.get('/products/:id', UserController.getProductById);
 
 
 module.exports = router;
