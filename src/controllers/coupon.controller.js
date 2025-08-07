@@ -104,19 +104,6 @@ const deleteCoupon = catchAsync(async (req, res) => {
   });
 });
 
-const toggleCouponStatus = catchAsync(async (req, res) => {
-  const coupon = await Coupon.findById(req.params.id);
-  if (!coupon) {
-    return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'Coupon not found'});
-  }
-  coupon.status = coupon.status === 'active' ? 'inactive' : 'active';
-  await coupon.save();
-  res.status(httpStatus.OK).json({
-    status: true,
-    message: `Coupon is now ${coupon.status}`,
-    data: coupon,
-  });
-});
 
 const getPublicCoupons = catchAsync(async (req, res) => {
   const {page = 1, limit = 10, search = '', sort = 'new_to_old', discountType} = req.query;
@@ -164,6 +151,5 @@ module.exports = {
   createCoupon,
   updateCoupon,
   deleteCoupon,
-  toggleCouponStatus,
   getPublicCoupons,
 };

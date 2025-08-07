@@ -98,6 +98,7 @@ module.exports = {
       endpoint: envVars.R2_ENDPOINT,
       accessKeyId: envVars.R2_ACCESS_KEY_ID,
       secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
+      publicBaseUrl: 'https://7ec6c3b59b4801f2994d518529dc4078.r2.cloudflarestorage.com', 
     },
   },
 

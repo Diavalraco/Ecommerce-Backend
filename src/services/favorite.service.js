@@ -22,34 +22,7 @@ const removeFavorite = async (userId, blogId) => {
   return fav;
 };
 
-const getFavoritesByUser = async (userId, {page = 1, limit = 10} = {}) => {
-  const skip = (page - 1) * limit;
-  const [results, total] = await Promise.all([
-    Favorite.find({user: userId})
-      .sort({createdAt: -1})
-      .skip(skip)
-      .limit(limit)
-      .populate({
-        path: 'blog',
-        populate: [
-          {path: 'author', select: 'name profileImage instagramHandle'},
-          {path: 'categories', select: 'name image'},
-          {path: 'topics', select: 'name'},
-        ],
-      }),
-    Favorite.countDocuments({user: userId}),
-  ]);
-  return {
-    page,
-    limit,
-    results: results.map(f => f.blog),
-    totalPages: Math.ceil(total / limit),
-    totalResults: total,
-  };
-};
-
 module.exports = {
   addFavorite,
   removeFavorite,
-  getFavoritesByUser,
 };

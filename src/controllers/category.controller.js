@@ -194,73 +194,10 @@ const deleteCategory = catchAsync(async (req, res) => {
   }
 });
 
-const toggleCategoryStatus = async (req, res) => {
-  try {
-    const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({success: false, message: 'Category not found'});
-    category.status = category.status === 'active' ? 'inactive' : 'active';
-    await category.save();
-    res.json({
-      success: true,
-      message: `Category ${category.status === 'active' ? 'activated' : 'deactivated'} successfully`,
-      data: category,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating category status',
-      error: error.message,
-    });
-  }
-};
-
-const toggleCategoryFeatured = async (req, res) => {
-  try {
-    const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({success: false, message: 'Category not found'});
-    category.featured = !category.featured;
-    await category.save();
-    res.json({
-      success: true,
-      message: `Category ${category.featured ? 'featured' : 'unfeatured'} successfully`,
-      data: category,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating category featured status',
-      error: error.message,
-    });
-  }
-};
-
-const toggleCategoryPopular = async (req, res) => {
-  try {
-    const category = await Category.findById(req.params.id);
-    if (!category) return res.status(404).json({success: false, message: 'Category not found'});
-    category.popular = !category.popular;
-    await category.save();
-    res.json({
-      success: true,
-      message: `Category ${category.popular ? 'marked as popular' : 'unmarked as popular'} successfully`,
-      data: category,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating category popular status',
-      error: error.message,
-    });
-  }
-};
-
 module.exports = {
   getAllCategories,
   getCategoryById,
   createCategory,
   updateCategory,
   deleteCategory,
-  toggleCategoryStatus,
-  toggleCategoryFeatured,
-  toggleCategoryPopular,
 };

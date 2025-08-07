@@ -52,10 +52,5 @@ router.delete(
   //   firebaseAuth('admin'),
   productCtrl.deleteProduct
 );
-router.patch(
-  '/products/:id/toggle-status',
-  //   firebaseAuth('admin'),
-  productCtrl.toggleProductStatus
-);
 
 module.exports = router;

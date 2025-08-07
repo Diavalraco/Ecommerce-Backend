@@ -22,11 +22,6 @@ router.delete(
   couponController.deleteCoupon
 );
 
-router.patch(
-  '/coupons/:id/toggle-status',
-//   firebaseAuth('admin'),
-  couponController.toggleCouponStatus
-);
 
 router.get('/public/coupons', couponController.getPublicCoupons);
 

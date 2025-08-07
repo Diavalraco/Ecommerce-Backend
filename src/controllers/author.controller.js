@@ -165,7 +165,7 @@ const deleteAuthor = async (req, res) => {
         message: 'Cannot delete author. Author has associated blogs.',
       });
     }
-    
+
     if (author.profileImage) {
       const key = extractKey(author.profileImage);
       if (key) {
@@ -184,33 +184,10 @@ const deleteAuthor = async (req, res) => {
   }
 };
 
-const toggleAuthorStatus = async (req, res) => {
-  try {
-    const author = await Author.findById(req.params.id);
-    if (!author) return res.status(404).json({success: false, message: 'Author not found'});
-
-    author.status = author.status === 'active' ? 'inactive' : 'active';
-    await author.save();
-
-    res.json({
-      success: true,
-      message: `Author ${author.status === 'active' ? 'activated' : 'deactivated'} successfully`,
-      data: author,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating author status',
-      error: error.message,
-    });
-  }
-};
-
 module.exports = {
   getAllAuthors,
   getAuthorById,
   createAuthor,
   updateAuthor,
   deleteAuthor,
-  toggleAuthorStatus,
 };

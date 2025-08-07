@@ -146,79 +146,10 @@ const deleteTopic = async (req, res) => {
   }
 };
 
-const toggleTopicStatus = async (req, res) => {
-  try {
-    const topic = await Topic.findById(req.params.id);
-    if (!topic) return res.status(404).json({success: false, message: 'Topic not found'});
-
-    topic.status = topic.status === 'active' ? 'inactive' : 'active';
-    await topic.save();
-
-    res.json({
-      success: true,
-      message: `Topic ${topic.status === 'active' ? 'activated' : 'deactivated'} successfully`,
-      data: topic,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating topic status',
-      error: error.message,
-    });
-  }
-};
-
-const toggleTopicFeatured = async (req, res) => {
-  try {
-    const topic = await Topic.findById(req.params.id);
-    if (!topic) return res.status(404).json({success: false, message: 'Topic not found'});
-
-    topic.featured = !topic.featured;
-    await topic.save();
-
-    res.json({
-      success: true,
-      message: `Topic ${topic.featured ? 'featured' : 'unfeatured'} successfully`,
-      data: topic,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating topic featured status',
-      error: error.message,
-    });
-  }
-};
-
-const toggleTopicPopular = async (req, res) => {
-  try {
-    const topic = await Topic.findById(req.params.id);
-    if (!topic) return res.status(404).json({success: false, message: 'Topic not found'});
-
-    topic.popular = !topic.popular;
-    await topic.save();
-
-    res.json({
-      success: true,
-      message: `Topic ${topic.popular ? 'marked as popular' : 'unmarked as popular'} successfully`,
-      data: topic,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating topic popular status',
-      error: error.message,
-    });
-  }
-};
-
 module.exports = {
   getAllTopics,
   getTopicById,
   createTopic,
   updateTopic,
   deleteTopic,
-  toggleTopicStatus,
-  toggleTopicFeatured,
-  toggleTopicPopular,
 };

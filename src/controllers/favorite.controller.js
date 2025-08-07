@@ -18,19 +18,8 @@ const unmarkFavorite = catchAsync(async (req, res) => {
   });
 });
 
-const getMyFavorites = catchAsync(async (req, res) => {
-  const data = await favoriteSvc.getFavoritesByUser(req.user._id, {
-    page: req.query.page, 
-    limit: req.query.limit,
-  });
-  res.status(httpStatus.OK).json({
-    status: true,
-    data,
-  });
-});
 
 module.exports = {
   markFavorite,
   unmarkFavorite,
-  getMyFavorites,
 };

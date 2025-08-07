@@ -4,7 +4,7 @@ const {GetObjectCommand} = require('@aws-sdk/client-s3');
 const {getSignedUrl} = require('@aws-sdk/s3-request-presigner');
 const config = require('./config');
 
-const {bucketName, endpoint, accessKeyId, secretAccessKey} = config.cloudflare.r2;
+const {bucketName, endpoint, accessKeyId, secretAccessKey, publicBaseUrl} = config.cloudflare.r2;
 
 const s3 = new S3Client({
   region: 'auto',
@@ -20,12 +20,15 @@ async function uploadImage({buffer, key, contentType}) {
       Key: key,
       Body: buffer,
       ContentType: contentType,
+      ACL: 'public-read',
     })
   );
 
   const getCmd = new GetObjectCommand({Bucket: bucketName, Key: key});
   const url = await getSignedUrl(s3, getCmd, {expiresIn: 3600});
   return {url, key};
+  // const publicUrl = `${publicBaseUrl}/${bucketName}/${key}`;
+  // return {url: publicUrl, key};
 }
 
 async function deleteImage(key) {

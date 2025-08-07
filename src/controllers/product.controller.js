@@ -314,25 +314,10 @@ const deleteProduct = catchAsync(async (req, res) => {
   });
 });
 
-const toggleProductStatus = catchAsync(async (req, res) => {
-  const product = await Products.findById(req.params.id);
-  if (!product) {
-    return res.status(httpStatus.NOT_FOUND).json({status: false, message: 'Product not found'});
-  }
-  product.status = product.status === 'active' ? 'inactive' : 'active';
-  await product.save();
-  res.status(httpStatus.OK).json({
-    status: true,
-    message: `Product is now ${product.status}`,
-    data: product,
-  });
-});
-
 module.exports = {
   getAllProducts,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
-  toggleProductStatus,
 };

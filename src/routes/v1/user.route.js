@@ -36,7 +36,6 @@ router.delete('/:userId', validate(userValidation.deleteUser), firebaseAuth('Adm
 router.post('/delete/:userId', validate(userValidation.deleteUser), firebaseAuth('All'), userController.softDeleteUser);
 
 router.get('/public/blogs', userController.getPublicBlogs);
-router.get('/public/blogs/category/:categoryId', publicblogController.getBlogsByCategory);
 router.get('/public/categories', CategoryController.getAllCategories);
 router.get('/public/blogs/:id', userController.getBlogById);
 
@@ -44,6 +43,5 @@ router.post('/blogs/:id/favorite', firebaseAuth('user'), favController.markFavor
 
 router.delete('/blogs/:id/favorite', firebaseAuth('user'), favController.unmarkFavorite);
 
-router.get('/users/favorites', firebaseAuth('user'), favController.getMyFavorites);
 
 module.exports = router;

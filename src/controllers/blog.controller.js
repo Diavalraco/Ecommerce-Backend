@@ -278,68 +278,6 @@ const deleteBlog = catchAsync(async (req, res) => {
     data: blog,
   });
 });
-const toggleBlogStatus = async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
-    blog.status = blog.status === 'published' ? 'draft' : 'published';
-    if (blog.status === 'published' && !blog.publishedAt) {
-      blog.publishedAt = new Date();
-    }
-    await blog.save();
-    res.json({
-      success: true,
-      message: `Blog ${blog.status === 'published' ? 'published' : 'unpublished'} successfully`,
-      data: blog,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating blog status',
-      error: error.message,
-    });
-  }
-};
-
-const toggleFeatured = async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
-    blog.featured = !blog.featured;
-    await blog.save();
-    res.json({
-      success: true,
-      message: `Blog ${blog.featured ? 'featured' : 'unfeatured'} successfully`,
-      data: blog,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating blog featured status',
-      error: error.message,
-    });
-  }
-};
-
-const togglePopular = async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({success: false, message: 'Blog not found'});
-    blog.popular = !blog.popular;
-    await blog.save();
-    res.json({
-      success: true,
-      message: `Blog ${blog.popular ? 'marked as popular' : 'unmarked as popular'} successfully`,
-      data: blog,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating blog popular status',
-      error: error.message,
-    });
-  }
-};
 
 module.exports = {
   getAllBlogs,
@@ -347,7 +285,4 @@ module.exports = {
   createBlog,
   updateBlog,
   deleteBlog,
-  toggleBlogStatus,
-  toggleFeatured,
-  togglePopular,
 };
