@@ -120,15 +120,17 @@ const applyCoupon = async (req, res) => {
         minOrderValue: coupon.minOrderValue,
       });
     }
+    const type = coupon.discountType.toLowerCase();
 
-    let discountAmount = 0;
-    if (coupon.discountType === 'percent') {
+    if (type === 'percent' || type === 'percentage') {
       discountAmount = Math.min((subtotal * coupon.discountValue) / 100, coupon.maxDiscount);
     } else {
-      discountAmount = Math.min(coupon.discountValue, coupon.maxDiscount);
+      discountAmount = Math.min(coupon.discountValue, coupon.maxDiscount ?? coupon.discountValue);
     }
+    discountAmount = parseFloat(discountAmount.toFixed(2));
 
-    const totalAmount = subtotal - discountAmount;
+    const rawTotal = subtotal - discountAmount;
+    const totalAmount = Math.round(rawTotal);
 
     res.json({
       message: 'Coupon applied successfully',
