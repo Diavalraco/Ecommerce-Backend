@@ -49,27 +49,32 @@ const createOrder = async (req, res) => {
     let validCoupon = null;
 
     if (couponCode) {
-      const coupon = await Coupon.findOne({code: couponCode.toUpperCase(), status: 'active'});
+      const coupon = await Coupon.findOne({
+        code: couponCode.toUpperCase(),
+        status: 'active',
+      });
       if (!coupon) {
         return res.status(400).json({error: 'Invalid coupon code'});
       }
-
       if (subtotal < coupon.minOrderValue) {
         return res.status(400).json({
           error: `Minimum order value should be ₹${coupon.minOrderValue} to use this coupon`,
         });
       }
 
-      if (coupon.discountType === 'percent') {
+      const type = coupon.discountType.toLowerCase();
+      if (type === 'percent' || type === 'percentage') {
         discountAmount = Math.min((subtotal * coupon.discountValue) / 100, coupon.maxDiscount);
       } else {
-        discountAmount = Math.min(coupon.discountValue, coupon.maxDiscount);
+        discountAmount = Math.min(coupon.discountValue, coupon.maxDiscount ?? coupon.discountValue);
       }
 
+      discountAmount = parseFloat(discountAmount.toFixed(2));
       validCoupon = coupon;
     }
 
-    const totalAmount = subtotal - discountAmount;
+    const rawTotal = subtotal - discountAmount;
+    const totalAmount = Math.round(rawTotal);
 
     const order = new Order({
       userId,
