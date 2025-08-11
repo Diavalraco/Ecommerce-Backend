@@ -2,6 +2,9 @@ const Order = require('../models/order.model');
 const Products = require('../models/products.model');
 const Coupon = require('../models/coupon.model');
 const Address = require('../models/address.model');
+const crypto = require('crypto');
+const config = require('../config/config');
+const razorpay = config.razorpay;
 
 const createOrder = async (req, res) => {
   try {
@@ -76,6 +79,16 @@ const createOrder = async (req, res) => {
     const rawTotal = subtotal - discountAmount;
     const totalAmount = Math.round(rawTotal);
 
+    const razorpayOrder = await razorpay.orders.create({
+      amount: totalAmount * 100,
+      currency: 'INR',
+      receipt: `order_${Date.now()}`,
+      notes: {
+        userId: userId.toString(),
+        couponCode: validCoupon ? validCoupon.code : '',
+      },
+    });
+
     const order = new Order({
       userId,
       items: orderItems,
@@ -84,6 +97,7 @@ const createOrder = async (req, res) => {
       discountAmount,
       totalAmount,
       deliveryAddress: deliveryAddressId,
+      razorpayOrderId: razorpayOrder.id,
     });
 
     await order.save();
@@ -99,6 +113,11 @@ const createOrder = async (req, res) => {
     res.status(201).json({
       message: 'Order created successfully',
       order: populatedOrder,
+      razorpayOrder: {
+        id: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+      },
     });
   } catch (error) {
     console.error('Create order error:', error);
@@ -154,8 +173,66 @@ const applyCoupon = async (req, res) => {
     res.status(500).json({error: 'Internal server error'});
   }
 };
+const verifyPayment = async (req, res) => {
+  try {
+    const {razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId} = req.body;
+    const body = razorpay_order_id + '|' + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest('hex');
+
+    const isAuthentic = expectedSignature === razorpay_signature;
+
+    if (!isAuthentic) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payment signature',
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found',
+      });
+    }
+
+    order.razorpayPaymentId = razorpay_payment_id;
+    order.razorpaySignature = razorpay_signature;
+    order.paymentStatus = 'paid';
+    order.status = 'confirmed';
+    order.paymentDate = new Date();
+
+    await order.save();
+
+    if (order.paymentStatus === 'paid') {
+      return res.json({
+        success: true,
+        status: 'success',
+        message: 'Payment verified successfully',
+        order: await Order.findById(order._id)
+          .populate('items.productId', 'name images')
+          .populate('deliveryAddress'),
+      });
+    }
+
+    res.status(400).json({
+      success: false,
+      error: 'Payment status not paid',
+    });
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+};
 
 module.exports = {
   createOrder,
   applyCoupon,
+  verifyPayment,
 };

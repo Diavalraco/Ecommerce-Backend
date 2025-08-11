@@ -1,7 +1,7 @@
 const Joi = require('joi');
 const path = require('path');
 const dotnev = require('dotenv');
-
+const Razorpay = require('razorpay');
 dotnev.config({path: path.join(__dirname, '../../.env')});
 
 const parseKey = key => {
@@ -53,6 +53,11 @@ if (error) {
   throw new Error(`Config validation error: ${error.message}`);
 }
 
+const razorpay = new Razorpay({
+  key_id: envVars.RAZORPAY_KEY_ID,
+  key_secret: envVars.RAZORPAY_KEY_SECRET,
+});
+
 module.exports = {
   env: envVars.NODE_ENV,
   port: envVars.PORT,
@@ -98,10 +103,11 @@ module.exports = {
       endpoint: envVars.R2_ENDPOINT,
       accessKeyId: envVars.R2_ACCESS_KEY_ID,
       secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
-      publicBaseUrl: 'https://7ec6c3b59b4801f2994d518529dc4078.r2.cloudflarestorage.com', 
+      publicBaseUrl: 'https://7ec6c3b59b4801f2994d518529dc4078.r2.cloudflarestorage.com',
     },
   },
 
+  razorpay,
   //  twilio: {
   //   accountSid: envVars.TWILIO_ACCOUNT_SID,
   //   authToken: envVars.TWILIO_AUTH_TOKEN,
