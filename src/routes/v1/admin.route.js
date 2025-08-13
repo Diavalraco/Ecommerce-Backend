@@ -8,6 +8,7 @@ const firebaseAuth = require('../../middlewares/firebaseAuth');
 const TopicController = require('../../controllers/topic.controller');
 const upload = require('../../middlewares/upload');
 const {uploadMedia: uploadCtrl} = require('../../controllers/video.controller');
+const statsController = require('../../controllers/stats.controller');
 
 router.get('/blogs', blogController.getAllBlogs);
 router.get('/blogs/:id', blogController.getBlogById);
@@ -39,5 +40,8 @@ router.get('/users', UserController.getAllUsers);
 router.get('/users/:userId', UserController.getUserById);
 router.put('/users/:userId/block-status', UserController.toggleUserBlockStatus);
 
+router.get('/stats', statsController.getAdminStats);
+router.get('/stats/revenue', firebaseAuth('admin'), statsController.getRevenueStats);
+router.get('/stats/orders', firebaseAuth('admin'), statsController.getOrderStatusStats);
 
 module.exports = router;

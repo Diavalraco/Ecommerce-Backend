@@ -2,6 +2,9 @@ const Order = require('../models/order.model');
 const Products = require('../models/products.model');
 const Coupon = require('../models/coupon.model');
 const Address = require('../models/address.model');
+const catchAsync = require('../utils/catchAsync');
+const mongoose = require('mongoose');
+const httpStatus = require('http-status');
 const crypto = require('crypto');
 const config = require('../config/config');
 const razorpay = config.razorpay;
@@ -231,8 +234,216 @@ const verifyPayment = async (req, res) => {
   }
 };
 
+const escapeRegex = str => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const getAllOrders = catchAsync(async (req, res) => {
+  const {page = 1, limit = 10, search = '', status, paymentStatus, sort = 'new_to_old'} = req.query;
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {};
+
+  if (status && status !== 'all') query.status = status;
+  if (paymentStatus && paymentStatus !== 'all') query.paymentStatus = paymentStatus;
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    const escaped = escapeRegex(s);
+    const or = [];
+
+    if (mongoose.Types.ObjectId.isValid(s)) {
+      or.push({_id: mongoose.Types.ObjectId(s)});
+    }
+
+    or.push({
+      $expr: {
+        $regexMatch: {
+          input: {$toString: '$_id'},
+          regex: escaped,
+          options: 'i',
+        },
+      },
+    });
+
+    or.push({razorpayOrderId: {$regex: escaped, $options: 'i'}});
+    or.push({razorpayPaymentId: {$regex: escaped, $options: 'i'}});
+    or.push({couponCode: {$regex: escaped, $options: 'i'}});
+    if (!isNaN(Number(s))) or.push({totalAmount: Number(s)});
+
+    query.$or = or;
+  }
+
+  const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
+
+  console.log('getAllOrders query =>', JSON.stringify(query));
+
+  const [orders, totalCount] = await Promise.all([
+    Order.find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitNum)
+      .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'})
+      .populate('items.productId', 'name images')
+      .populate('deliveryAddress'),
+    Order.countDocuments(query),
+  ]);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: orders,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
+    message: 'Orders fetched successfully',
+  });
+});
+
+const getOrdersByUser = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+
+  const {page = 1, limit = 10, status, paymentStatus, sort = 'new_to_old'} = req.query;
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {userId};
+
+  if (status && status !== 'all') query.status = status;
+  if (paymentStatus && paymentStatus !== 'all') query.paymentStatus = paymentStatus;
+
+  const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
+
+  const [orders, totalCount] = await Promise.all([
+    Order.find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitNum)
+      .populate('items.productId', 'name images')
+      .populate('deliveryAddress'),
+    Order.countDocuments(query),
+  ]);
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: {
+      page: pageNum,
+      limit: limitNum,
+      results: orders,
+      totalPages: Math.ceil(totalCount / limitNum),
+      totalResults: totalCount,
+    },
+    message: `Orders for user ${userId} fetched successfully`,
+  });
+});
+
+const getOrderById = catchAsync(async (req, res) => {
+  const {id} = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(httpStatus.BAD_REQUEST).json({status: false, data: null, message: 'Invalid order id'});
+  }
+
+  const order = await Order.findById(id)
+    .populate('items.productId', 'name images')
+    .populate('deliveryAddress')
+    .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'});
+
+  if (!order) {
+    return res.status(httpStatus.NOT_FOUND).json({status: false, data: null, message: 'Order not found'});
+  }
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: order,
+    message: 'Order fetched successfully',
+  });
+});
+
+const updateOrder = catchAsync(async (req, res) => {
+  const {orderId} = req.params;
+  const updateData = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return res.status(httpStatus.BAD_REQUEST).json({
+      status: false,
+      message: 'Invalid order ID',
+    });
+  }
+
+  const allowedFields = ['status', 'paymentStatus'];
+  const filteredUpdateData = {};
+
+  Object.keys(updateData).forEach(key => {
+    if (allowedFields.includes(key)) {
+      filteredUpdateData[key] = updateData[key];
+    }
+  });
+
+  if (filteredUpdateData.status) {
+    const validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(filteredUpdateData.status)) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: false,
+        message: `Invalid status. Valid statuses are: ${validStatuses.join(', ')}`,
+      });
+    }
+  }
+
+  if (filteredUpdateData.paymentStatus) {
+    const validPaymentStatuses = ['pending', 'paid', 'failed', 'refunded'];
+    if (!validPaymentStatuses.includes(filteredUpdateData.paymentStatus)) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: false,
+        message: `Invalid payment status. Valid statuses are: ${validPaymentStatuses.join(', ')}`,
+      });
+    }
+  }
+
+  if (Object.keys(filteredUpdateData).length === 0) {
+    return res.status(httpStatus.BAD_REQUEST).json({
+      status: false,
+      message: 'No valid fields provided for update',
+    });
+  }
+
+  filteredUpdateData.updatedAt = new Date();
+
+  const updatedOrder = await Order.findByIdAndUpdate(orderId, filteredUpdateData, {
+    new: true,
+    runValidators: true,
+  })
+    .populate({path: 'userId', select: 'fullName email phoneNumber'})
+    .populate('items.productId', 'name images')
+    .populate('deliveryAddress');
+
+  if (!updatedOrder) {
+    return res.status(httpStatus.NOT_FOUND).json({
+      status: false,
+      message: 'Order not found',
+    });
+  }
+
+  res.status(httpStatus.OK).json({
+    status: true,
+    data: updatedOrder,
+    message: 'Order updated successfully',
+  });
+});
+
 module.exports = {
   createOrder,
   applyCoupon,
   verifyPayment,
+  getAllOrders,
+  getOrdersByUser,
+  getOrderById,
+  updateOrder,
 };

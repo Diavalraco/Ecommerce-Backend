@@ -54,4 +54,12 @@ router.post('/item',firebaseAuth('user'), cartCtrl.upsertCartItem);
 router.get('/cartel',firebaseAuth('user'), cartCtrl.getCart);
 router.post('/verify-payment', OrderController.verifyPayment);
 
+router.get('/admin-route', OrderController.getAllOrders);
+
+router.get('/getuserorders',firebaseAuth('user'),  OrderController.getOrdersByUser);
+
+router.get('/order/:id',  OrderController.getOrderById);
+
+router.patch('/admin/orders/:orderId/status', OrderController.updateOrder);
+
 module.exports = router;
