@@ -237,6 +237,135 @@ const verifyPayment = async (req, res) => {
 const escapeRegex = str => {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
+function getSelectedPackageForItem(item) {
+  const product = item.productId || {};
+  const qDetails = Array.isArray(product.quantityDetails) ? product.quantityDetails : [];
+
+  // console.log('Product ID:', product._id);
+  // console.log('Order indices - quantityIndex:', item.quantityIndex, 'packageIndex:', item.packageIndex);
+  // console.log('Order data - quantity:', item.quantity, 'price:', item.price, 'totalPrice:', item.totalPrice);
+  // console.log('Product quantityDetails length:', qDetails.length);
+
+  if (qDetails.length > 0) {
+    // console.log('Full quantityDetails structure:');
+    qDetails.forEach((qd, idx) => {
+      // console.log(`  [${idx}] quantity: "${qd.quantity}", packages: ${qd.packages?.length || 0}`);
+      if (qd.packages) {
+        qd.packages.forEach((pkg, pidx) => {
+          // console.log(`    [${pidx}] title: "${pkg.title}", basePrice: ${pkg.basePrice}, sellPrice: ${pkg.sellPrice}`);
+        });
+      }
+    });
+  }
+
+  let qIdx = Number.isFinite(Number(item.quantityIndex)) ? parseInt(item.quantityIndex, 10) : null;
+  let pIdx = Number.isFinite(Number(item.packageIndex)) ? parseInt(item.packageIndex, 10) : null;
+
+  // console.log('Parsed indices - qIdx:', qIdx, 'pIdx:', pIdx);
+
+  if (qIdx !== null && qIdx >= 0 && qIdx < qDetails.length) {
+    const quantityEntry = qDetails[qIdx];
+    const packages = Array.isArray(quantityEntry.packages) ? quantityEntry.packages : [];
+
+    console.log(`Found quantityEntry at index ${qIdx}:`, {
+      quantity: quantityEntry.quantity,
+      packagesLength: packages.length,
+    });
+
+    if (pIdx !== null && pIdx >= 0 && pIdx < packages.length) {
+      const selectedPackage = packages[pIdx];
+      // console.log(` EXACT MATCH found at [${qIdx}][${pIdx}]:`, selectedPackage);
+      return {
+        quantity: quantityEntry.quantity ?? null,
+        package: selectedPackage,
+        quantityIndex: qIdx,
+        packageIndex: pIdx,
+        unitPrice: item.price,
+        totalPrice: item.totalPrice,
+        orderedQuantity: item.quantity,
+        matchReason: 'index_match',
+      };
+    }
+
+    if (packages.length > 0) {
+      const selectedPackage = packages[0];
+      // console.log(` Using first package at [${qIdx}][0] (invalid packageIndex ${pIdx}):`, selectedPackage);
+      return {
+        quantity: quantityEntry.quantity ?? null,
+        package: selectedPackage,
+        quantityIndex: qIdx,
+        packageIndex: 0,
+        unitPrice: item.price,
+        totalPrice: item.totalPrice,
+        orderedQuantity: item.quantity,
+        matchReason: 'index_clamped_to_package',
+      };
+    }
+  }
+
+  const orderedQty = Number(item.quantity) || 0;
+  const unitFromOrder = orderedQty > 0 ? Number(item.totalPrice) / orderedQty : Number(item.price || 0);
+
+  // console.log('Trying price match with unitFromOrder:', unitFromOrder);
+  for (let qi = 0; qi < qDetails.length; qi++) {
+    const packages = Array.isArray(qDetails[qi].packages) ? qDetails[qi].packages : [];
+    for (let pi = 0; pi < packages.length; pi++) {
+      const pkg = packages[pi];
+      const sell = Number(pkg.sellPrice ?? pkg.basePrice ?? NaN);
+      if (!Number.isNaN(sell) && Math.abs(Number(unitFromOrder) - sell) < 0.01) {
+        // console.log(` PRICE MATCH found at [${qi}][${pi}]:`, pkg);
+        return {
+          quantity: qDetails[qi].quantity ?? null,
+          package: pkg,
+          quantityIndex: qi,
+          packageIndex: pi,
+          unitPrice: unitFromOrder,
+          totalPrice: item.totalPrice,
+          orderedQuantity: item.quantity,
+          matchReason: 'matched_by_unit_price',
+        };
+      }
+    }
+  }
+
+  if (qDetails.length > 0) {
+    const packages = Array.isArray(qDetails[0].packages) ? qDetails[0].packages : [];
+    if (packages.length > 0) {
+      // console.log('Using fallback - first package of first quantity:', packages[0]);
+      return {
+        quantity: qDetails[0].quantity ?? null,
+        package: packages[0],
+        quantityIndex: 0,
+        packageIndex: 0,
+        unitPrice: item.price,
+        totalPrice: item.totalPrice,
+        orderedQuantity: item.quantity,
+        matchReason: 'fallback_first_package',
+      };
+    }
+  }
+
+  // console.log(' No product data available - using constructed fallback');
+  const basePrice = item.price || item.totalPrice || 0;
+  const sellPrice = item.price || item.totalPrice || 0;
+
+  return {
+    quantity: String(item.quantity || '1'),
+    package: {
+      title: `Pack of ${item.quantity || 1}`,
+      basePrice: basePrice,
+      sellPrice: sellPrice,
+      discountType: basePrice > sellPrice ? 'flat' : null,
+      discountAmount: basePrice > sellPrice ? basePrice - sellPrice : null,
+    },
+    quantityIndex: null,
+    packageIndex: null,
+    unitPrice: item.price,
+    totalPrice: item.totalPrice,
+    orderedQuantity: item.quantity,
+    matchReason: 'constructed_from_order_data',
+  };
+}
 
 const getAllOrders = catchAsync(async (req, res) => {
   const {page = 1, limit = 10, search = '', status, paymentStatus, sort = 'new_to_old'} = req.query;
@@ -279,18 +408,111 @@ const getAllOrders = catchAsync(async (req, res) => {
 
   const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
 
-  console.log('getAllOrders query =>', JSON.stringify(query));
+  // console.log('getAllOrders query =>', JSON.stringify(query));
 
-  const [orders, totalCount] = await Promise.all([
+  const [ordersRaw, totalCount] = await Promise.all([
     Order.find(query)
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum)
       .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'})
-      .populate('items.productId', 'name images')
-      .populate('deliveryAddress'),
+      .populate({
+        path: 'items.productId',
+        select: 'name images quantityDetails',
+      })
+      .populate('deliveryAddress')
+      .lean(),
     Order.countDocuments(query),
   ]);
+
+  const allProductIds = new Set();
+  ordersRaw.forEach(order => {
+    order.items.forEach(item => {
+      if (item.productId && item.productId._id) {
+        allProductIds.add(item.productId._id.toString());
+      }
+    });
+  });
+
+  // console.log('All product IDs in orders:', Array.from(allProductIds));
+
+  let productDataMap = {};
+  if (allProductIds.size > 0) {
+    const objectIds = Array.from(allProductIds).map(id => new mongoose.Types.ObjectId(id));
+
+    console.log(
+      'Fetching quantityDetails for all products:',
+      objectIds.map(id => id.toString())
+    );
+
+    const products = await mongoose
+      .model('Products')
+      .find({_id: {$in: objectIds}}, 'quantityDetails')
+      .lean();
+
+    console.log(
+      'Fetched products:',
+      products.map(p => ({
+        id: p._id.toString(),
+        hasQD: !!p.quantityDetails,
+        qdLength: p.quantityDetails?.length || 0,
+      }))
+    );
+
+    products.forEach(product => {
+      productDataMap[product._id.toString()] = product.quantityDetails || [];
+    });
+
+    console.log('Product data map created for', Object.keys(productDataMap).length, 'products');
+  }
+
+  const orders = ordersRaw.map(order => {
+    order.items = order.items.map(item => {
+      if (item.productId && item.productId._id) {
+        const productId = item.productId._id.toString();
+        const quantityDetails = productDataMap[productId];
+
+        if (quantityDetails && quantityDetails.length > 0) {
+          console.log(`Using fetched quantityDetails for product ${productId} (${quantityDetails.length} entries)`);
+          item.productId.quantityDetails = quantityDetails;
+        } else {
+          console.log(`No quantityDetails found for product ${productId}`);
+          item.productId.quantityDetails = [];
+        }
+      }
+
+      console.log('Processing item:', {
+        orderId: order._id,
+        productId: item.productId?._id,
+        quantityIndex: item.quantityIndex,
+        packageIndex: item.packageIndex,
+        hasQuantityDetails: !!item.productId?.quantityDetails,
+        quantityDetailsLength: item.productId?.quantityDetails?.length || 0,
+      });
+
+      const selected = getSelectedPackageForItem(item);
+
+      console.log('Selected result:', {
+        orderId: order._id,
+        matchReason: selected?.matchReason,
+        hasPackage: !!selected?.package,
+        selectedQuantity: selected?.quantity,
+      });
+
+      if (item.productId && item.productId.quantityDetails) {
+        delete item.productId.quantityDetails;
+      }
+
+      return {
+        ...item,
+        selectedPackage: selected ? selected.package : null,
+        selectedQuantity: selected ? selected.quantity : null,
+        selectedUnitPrice: selected ? selected.unitPrice : item.price,
+        selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
+      };
+    });
+    return order;
+  });
 
   res.status(httpStatus.OK).json({
     status: true,
@@ -351,18 +573,106 @@ const getOrderById = catchAsync(async (req, res) => {
     return res.status(httpStatus.BAD_REQUEST).json({status: false, data: null, message: 'Invalid order id'});
   }
 
-  const order = await Order.findById(id)
-    .populate('items.productId', 'name images')
+  const orderRaw = await Order.findById(id)
+    .populate('items.productId', 'name images quantityDetails')
     .populate('deliveryAddress')
-    .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'});
+    .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'})
+    .lean();
 
-  if (!order) {
+  if (!orderRaw) {
     return res.status(httpStatus.NOT_FOUND).json({status: false, data: null, message: 'Order not found'});
   }
 
+  const allProductIds = new Set();
+  orderRaw.items.forEach(item => {
+    if (item.productId && item.productId._id) {
+      allProductIds.add(item.productId._id.toString());
+    }
+  });
+
+  console.log('Product IDs in order:', Array.from(allProductIds));
+
+  let productDataMap = {};
+  if (allProductIds.size > 0) {
+    const objectIds = Array.from(allProductIds).map(id => new mongoose.Types.ObjectId(id));
+
+    console.log(
+      'Fetching quantityDetails for order products:',
+      objectIds.map(id => id.toString())
+    );
+
+    const products = await mongoose
+      .model('Products')
+      .find({_id: {$in: objectIds}}, 'quantityDetails')
+      .lean();
+
+    console.log(
+      'Fetched products for order:',
+      products.map(p => ({
+        id: p._id.toString(),
+        hasQD: !!p.quantityDetails,
+        qdLength: p.quantityDetails?.length || 0,
+      }))
+    );
+
+    products.forEach(product => {
+      productDataMap[product._id.toString()] = product.quantityDetails || [];
+    });
+
+    console.log('Product data map created for order with', Object.keys(productDataMap).length, 'products');
+  }
+
+  const processedOrder = {
+    ...orderRaw,
+    items: orderRaw.items.map(item => {
+      if (item.productId && item.productId._id) {
+        const productId = item.productId._id.toString();
+        const quantityDetails = productDataMap[productId];
+
+        if (quantityDetails && quantityDetails.length > 0) {
+          console.log(` Using fetched quantityDetails for product ${productId} (${quantityDetails.length} entries)`);
+          item.productId.quantityDetails = quantityDetails;
+        } else {
+          console.log(`No quantityDetails found for product ${productId}`);
+          item.productId.quantityDetails = [];
+        }
+      }
+
+      console.log('Processing order item:', {
+        orderId: orderRaw._id,
+        productId: item.productId?._id,
+        quantityIndex: item.quantityIndex,
+        packageIndex: item.packageIndex,
+        hasQuantityDetails: !!item.productId?.quantityDetails,
+        quantityDetailsLength: item.productId?.quantityDetails?.length || 0,
+      });
+
+      const selected = getSelectedPackageForItem(item);
+
+      console.log('Selected result for order item:', {
+        orderId: orderRaw._id,
+        matchReason: selected?.matchReason,
+        hasPackage: !!selected?.package,
+        selectedQuantity: selected?.quantity,
+      });
+
+      if (item.productId && item.productId.quantityDetails) {
+        delete item.productId.quantityDetails;
+      }
+
+      return {
+        ...item,
+        selectedPackage: selected ? selected.package : null,
+        selectedQuantity: selected ? selected.quantity : null,
+        selectedUnitPrice: selected ? selected.unitPrice : item.price,
+        selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
+      };
+    }),
+  };
+
   res.status(httpStatus.OK).json({
     status: true,
-    data: order,
+    data: processedOrder,
     message: 'Order fetched successfully',
   });
 });
