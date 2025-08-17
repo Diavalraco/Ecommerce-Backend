@@ -26,9 +26,9 @@ async function uploadImage({buffer, key, contentType}) {
 
   const getCmd = new GetObjectCommand({Bucket: bucketName, Key: key});
   const url = await getSignedUrl(s3, getCmd, {expiresIn: 3600});
-  return {url, key};
-  // const publicUrl = `${publicBaseUrl}/${bucketName}/${key}`;
-  // return {url: publicUrl, key};
+  // return {url, key};
+  const publicUrl = `${publicBaseUrl}/${key}`;
+  return {url: publicUrl, key};
 }
 
 async function deleteImage(key) {
