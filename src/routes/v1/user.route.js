@@ -1,5 +1,4 @@
 const express = require('express');
-
 const validate = require('../../middlewares/validate');
 const firebaseAuth = require('../../middlewares/firebaseAuth');
 const userValidation = require('../../validations/user.validation');
@@ -11,7 +10,8 @@ const favController = require('../../controllers/favorite.controller');
 const {fileUploadService} = require('../../microservices');
 const UserController = require('../../controllers/user.controller');
 const OrderController = require('../../controllers/order.controller');
-const  cartCtrl =require('../../controllers/cart.controller')
+const cartCtrl = require('../../controllers/cart.controller');
+const wishlist = require('../../controllers/wishlist.controller');
 const router = express.Router();
 
 // for updating userDetails
@@ -50,16 +50,19 @@ router.get('/products/:id', UserController.getProductById);
 router.post('/create', firebaseAuth('user'), OrderController.createOrder);
 
 router.post('/apply-coupon', firebaseAuth('user'), OrderController.applyCoupon);
-router.post('/item',firebaseAuth('user'), cartCtrl.upsertCartItem);
-router.get('/cartel',firebaseAuth('user'), cartCtrl.getCart);
+router.post('/item', firebaseAuth('user'), cartCtrl.upsertCartItem);
+router.get('/cartel', firebaseAuth('user'), cartCtrl.getCart);
 router.post('/verify-payment', OrderController.verifyPayment);
 
 router.get('/admin-route', OrderController.getAllOrders);
 
-router.get('/getuserorders',firebaseAuth('user'),  OrderController.getOrdersByUser);
+router.get('/getuserorders', firebaseAuth('user'), OrderController.getOrdersByUser);
 
-router.get('/order/:id',  OrderController.getOrderById);
+router.get('/order/:id', OrderController.getOrderById);
 
 router.patch('/admin/orders/:orderId/status', OrderController.updateOrder);
+
+router.post('/wishlist/toggle', firebaseAuth('user'), wishlist.toggleWishlistItem);
+router.get('/mywishlisrt', firebaseAuth('user'), wishlist.getWishlist);
 
 module.exports = router;

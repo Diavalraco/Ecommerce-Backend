@@ -7,6 +7,7 @@ const productRoute = require('./product.route');
 const couponRoute = require('./coupon.routes');
 const addressRoute = require('./address.route');
 const contactRoute = require('./contact.route');
+const reviewRoute = require('./review.route');
 
 const router = express.Router();
 
@@ -17,5 +18,6 @@ router.use('/adminproduct', productRoute);
 router.use('/adminCoupon', couponRoute);
 router.use('/addresses', addressRoute);
 router.use('/contact', contactRoute);
+router.use('/reviews', reviewRoute);
 
 module.exports = router;
