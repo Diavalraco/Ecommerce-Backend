@@ -42,23 +42,34 @@ async function deleteImage(key) {
     throw err;
   }
 }
-function extractKey(fullUrl) {
+function extractKey(fullUrl, bucketName) {
   if (!fullUrl) return null;
-  let pathname;
+
   try {
-    pathname = new URL(fullUrl).pathname;
+    const url = new URL(fullUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (bucketName) {
+      if (url.hostname.includes(bucketName)) {
+        const key = segments.join('/');
+        console.log('Hostname matched bucketName; extracted key:', key);
+        return key || null;
+      }
+      const idx = segments.indexOf(bucketName);
+      if (idx !== -1) {
+        const key = segments.slice(idx + 1).join('/');
+        console.log('Found bucketName in path; extracted key:', key);
+        return key || null;
+      }
+      console.warn(`Bucket "${bucketName}" not found in hostname or path — returning full path as key.`);
+      return segments.join('/') || null;
+    }
+    const key = segments.join('/');
+    console.log('Extracted key (no bucketName provided):', key);
+    return key || null;
   } catch (e) {
-    console.warn('Invalid URL passed to extractKey:', fullUrl);
+    console.warn('Invalid URL passed to extractKey:', fullUrl, e);
     return null;
   }
-  const segments = pathname.split('/');
-  if (segments[1] !== bucketName) {
-    console.warn(`URL bucket mismatch (expected "${bucketName}", got "${segments[1]}")`);
-    return null;
-  }
-  const key = segments.slice(2).join('/');
-  console.log(`Extracted key from URL: ${key}`);
-  return key;
 }
 
 module.exports = {uploadImage, deleteImage, extractKey};

@@ -96,6 +96,12 @@ const orderSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    trackingId: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
   },
   {
     timestamps: true,

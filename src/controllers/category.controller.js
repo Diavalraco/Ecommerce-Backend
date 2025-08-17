@@ -14,7 +14,7 @@ const getAllCategories = catchAsync(async (req, res) => {
   const limitNum = parseInt(limit, 10);
   const skip = (pageNum - 1) * limitNum;
 
-  const query = {};
+  const query = {isDeleted:false};
   if (search.trim() !== '') {
     query.name = {$regex: search.trim(), $options: 'i'};
   }
@@ -169,24 +169,41 @@ const deleteCategory = catchAsync(async (req, res) => {
       return res.status(httpStatus.NOT_FOUND).json({success: false, message: 'Category not found'});
     }
 
+    if (category.isDeleted) {
+      return res.status(httpStatus.BAD_REQUEST).json({success: false, message: 'Category already deleted'});
+    }
+
     const blogCount = await Blog.countDocuments({categories: req.params.id});
     const topicCount = await Topic.countDocuments({categories: req.params.id});
+
     if (blogCount > 0 || topicCount > 0) {
-      return res.status(httpStatus.BAD_REQUEST).json({
-        success: false,
-        message: 'Cannot delete category. Category has associated blogs or topics.',
+      category.isDeleted = true;
+      category.status = 'inactive';
+      await category.save();
+
+      return res.json({
+        success: true,
+        message: 'Category soft-deleted because it has associated blogs or topics',
+        data: category,
       });
     }
 
     if (category.image) {
       const key = extractKey(category.image);
-      if (key) await deleteImage(key);
+      if (key) {
+        try {
+          await deleteImage(key);
+        } catch (delErr) {
+          console.warn('Failed to delete image from storage for key:', key, delErr);
+        }
+      }
     }
 
     await category.deleteOne();
-    res.json({success: true, message: 'Category deleted successfully'});
+
+    return res.json({success: true, message: 'Category deleted successfully'});
   } catch (error) {
-    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: 'Error deleting category',
       error: error.message,

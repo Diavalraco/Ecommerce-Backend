@@ -368,7 +368,7 @@ function getSelectedPackageForItem(item) {
 }
 
 const getAllOrders = catchAsync(async (req, res) => {
-  const {page = 1, limit = 10, search = '', status, paymentStatus, sort = 'new_to_old'} = req.query;
+  const {page = 1, limit = 10, search = '', status, paymentStatus, sort = 'new_to_old', trackingId} = req.query;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
@@ -378,6 +378,9 @@ const getAllOrders = catchAsync(async (req, res) => {
 
   if (status && status !== 'all') query.status = status;
   if (paymentStatus && paymentStatus !== 'all') query.paymentStatus = paymentStatus;
+  if (trackingId && trackingId.trim()) {
+    query.trackingId = trackingId.trim();
+  }
 
   if (search && search.trim()) {
     const s = search.trim();
@@ -401,6 +404,7 @@ const getAllOrders = catchAsync(async (req, res) => {
     or.push({razorpayOrderId: {$regex: escaped, $options: 'i'}});
     or.push({razorpayPaymentId: {$regex: escaped, $options: 'i'}});
     or.push({couponCode: {$regex: escaped, $options: 'i'}});
+    or.push({trackingId: {$regex: escaped, $options: 'i'}});
     if (!isNaN(Number(s))) or.push({totalAmount: Number(s)});
 
     query.$or = or;
@@ -543,15 +547,112 @@ const getOrdersByUser = catchAsync(async (req, res) => {
 
   const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
 
-  const [orders, totalCount] = await Promise.all([
+  const [ordersRaw, totalCount] = await Promise.all([
     Order.find(query)
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum)
-      .populate('items.productId', 'name images')
-      .populate('deliveryAddress'),
+      .populate({
+        path: 'items.productId',
+        select: 'name images quantityDetails',
+      })
+      .populate('deliveryAddress')
+      .lean(),
     Order.countDocuments(query),
   ]);
+
+  const allProductIds = new Set();
+  ordersRaw.forEach(order => {
+    order.items.forEach(item => {
+      if (item.productId && item.productId._id) {
+        allProductIds.add(item.productId._id.toString());
+      }
+    });
+  });
+
+  console.log('Product IDs in user orders:', Array.from(allProductIds));
+
+  let productDataMap = {};
+  if (allProductIds.size > 0) {
+    const objectIds = Array.from(allProductIds).map(id => new mongoose.Types.ObjectId(id));
+
+    console.log(
+      'Fetching quantityDetails for user order products:',
+      objectIds.map(id => id.toString())
+    );
+
+    const products = await mongoose
+      .model('Products')
+      .find({_id: {$in: objectIds}}, 'quantityDetails')
+      .lean();
+
+    console.log(
+      'Fetched products for user orders:',
+      products.map(p => ({
+        id: p._id.toString(),
+        hasQD: !!p.quantityDetails,
+        qdLength: p.quantityDetails?.length || 0,
+      }))
+    );
+
+    products.forEach(product => {
+      productDataMap[product._id.toString()] = product.quantityDetails || [];
+    });
+
+    console.log('Product data map created for user orders with', Object.keys(productDataMap).length, 'products');
+  }
+
+  const orders = ordersRaw.map(order => {
+    order.items = order.items.map(item => {
+      if (item.productId && item.productId._id) {
+        const productId = item.productId._id.toString();
+        const quantityDetails = productDataMap[productId];
+
+        if (quantityDetails && quantityDetails.length > 0) {
+          console.log(
+            ` Using fetched quantityDetails for user order product ${productId} (${quantityDetails.length} entries)`
+          );
+          item.productId.quantityDetails = quantityDetails;
+        } else {
+          console.log(` No quantityDetails found for user order product ${productId}`);
+          item.productId.quantityDetails = [];
+        }
+      }
+
+      console.log('Processing user order item:', {
+        orderId: order._id,
+        userId: userId,
+        productId: item.productId?._id,
+        quantityIndex: item.quantityIndex,
+        packageIndex: item.packageIndex,
+        hasQuantityDetails: !!item.productId?.quantityDetails,
+        quantityDetailsLength: item.productId?.quantityDetails?.length || 0,
+      });
+
+      const selected = getSelectedPackageForItem(item);
+
+      console.log('Selected result for user order item:', {
+        orderId: order._id,
+        userId: userId,
+        matchReason: selected?.matchReason,
+        hasPackage: !!selected?.package,
+        selectedQuantity: selected?.quantity,
+      });
+
+      if (item.productId && item.productId.quantityDetails) {
+        delete item.productId.quantityDetails;
+      }
+
+      return {
+        ...item,
+        selectedPackage: selected ? selected.package : null,
+        selectedQuantity: selected ? selected.quantity : null,
+        selectedUnitPrice: selected ? selected.unitPrice : item.price,
+        selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
+      };
+    });
+    return order;
+  });
 
   res.status(httpStatus.OK).json({
     status: true,
@@ -688,7 +789,7 @@ const updateOrder = catchAsync(async (req, res) => {
     });
   }
 
-  const allowedFields = ['status', 'paymentStatus'];
+  const allowedFields = ['status', 'paymentStatus', 'trackingId'];
   const filteredUpdateData = {};
 
   Object.keys(updateData).forEach(key => {
@@ -715,6 +816,20 @@ const updateOrder = catchAsync(async (req, res) => {
         message: `Invalid payment status. Valid statuses are: ${validPaymentStatuses.join(', ')}`,
       });
     }
+  }
+  if (filteredUpdateData.trackingId !== undefined) {
+    const t = String(filteredUpdateData.trackingId).trim();
+    if (t === '') {
+      return res.status(httpStatus.BAD_REQUEST).json({status: false, message: 'trackingId cannot be empty'});
+    }
+    const ok = /^[A-Za-z0-9\-\_\.]{1,100}$/.test(t);
+    if (!ok) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: false,
+        message: 'Invalid trackingId — only letters, numbers, -, _, . allowed (max 100 chars)',
+      });
+    }
+    filteredUpdateData.trackingId = t;
   }
 
   if (Object.keys(filteredUpdateData).length === 0) {

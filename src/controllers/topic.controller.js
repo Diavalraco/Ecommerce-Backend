@@ -10,7 +10,7 @@ const getAllTopics = catchAsync(async (req, res) => {
   const limitNum = parseInt(limit, 10);
   const skip = (pageNum - 1) * limitNum;
 
-  const query = {};
+   const query = {isDeleted:false};
   if (search.trim() !== '') {
     query.name = {$regex: search.trim(), $options: 'i'};
   }
@@ -126,19 +126,30 @@ const deleteTopic = async (req, res) => {
     const topic = await Topic.findById(req.params.id);
     if (!topic) return res.status(404).json({success: false, message: 'Topic not found'});
 
+    if (topic.isDeleted) {
+      return res.status(400).json({success: false, message: 'Topic already deleted'});
+    }
+
     const blogCount = await Blog.countDocuments({topics: req.params.id});
+
     if (blogCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete topic. Topic has associated blogs.',
+      topic.isDeleted = true;
+      topic.deletedAt = new Date();
+      topic.status = 'inactive';
+      await topic.save();
+
+      return res.json({
+        success: true,
+        message: 'Topic soft-deleted because it has associated blogs',
+        data: topic,
       });
     }
 
     await topic.deleteOne();
 
-    res.json({success: true, message: 'Topic deleted successfully'});
+    return res.json({success: true, message: 'Topic deleted successfully'});
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Error deleting topic',
       error: error.message,

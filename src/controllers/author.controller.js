@@ -13,7 +13,7 @@ const getAllAuthors = catchAsync(async (req, res) => {
   const limitNum = parseInt(limit);
   const skip = (pageNum - 1) * limitNum;
 
-  const query = {};
+  const query = {isDeleted: false};
   if (search.trim() !== '') {
     query.name = {$regex: search.trim(), $options: 'i'};
   }
@@ -153,36 +153,52 @@ const updateAuthor = catchAsync(async (req, res) => {
     });
   }
 });
-const deleteAuthor = async (req, res) => {
+const deleteAuthor = catchAsync(async (req, res) => {
   try {
     const author = await Author.findById(req.params.id);
-    if (!author) return res.status(404).json({success: false, message: 'Author not found'});
+    if (!author) {
+      return res.status(404).json({success: false, message: 'Author not found'});
+    }
+    if (author.isDeleted) {
+      return res.status(400).json({success: false, message: 'Author already deleted'});
+    }
 
     const blogCount = await Blog.countDocuments({author: req.params.id});
+
     if (blogCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete author. Author has associated blogs.',
+      author.isDeleted = true;
+      author.status = 'inactive';
+      await author.save();
+
+      return res.json({
+        success: true,
+        message: 'Author soft-deleted because they have associated blogs',
+        data: author,
       });
     }
 
     if (author.profileImage) {
       const key = extractKey(author.profileImage);
       if (key) {
-        await deleteImage(key);
+        try {
+          await deleteImage(key);
+        } catch (err) {
+          console.warn('Failed to delete author image for key:', key, err);
+        }
       }
     }
 
     await author.deleteOne();
-    res.json({success: true, message: 'Author deleted successfully'});
+
+    return res.json({success: true, message: 'Author deleted successfully'});
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Error deleting author',
       error: error.message,
     });
   }
-};
+});
 
 module.exports = {
   getAllAuthors,
