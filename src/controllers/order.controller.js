@@ -2,6 +2,7 @@ const Order = require('../models/order.model');
 const Products = require('../models/products.model');
 const Coupon = require('../models/coupon.model');
 const Address = require('../models/address.model');
+const Rating = require('../models/review.model')
 const catchAsync = require('../utils/catchAsync');
 const mongoose = require('mongoose');
 const httpStatus = require('http-status');
@@ -531,6 +532,142 @@ const getAllOrders = catchAsync(async (req, res) => {
   });
 });
 
+// const getOrdersByUser = catchAsync(async (req, res) => {
+//   const userId = req.user.id;
+
+//   const {page = 1, limit = 10, status, paymentStatus, sort = 'new_to_old'} = req.query;
+
+//   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+//   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+//   const skip = (pageNum - 1) * limitNum;
+
+//   const query = {userId};
+
+//   if (status && status !== 'all') query.status = status;
+//   if (paymentStatus && paymentStatus !== 'all') query.paymentStatus = paymentStatus;
+
+//   const sortOption = sort === 'old_to_new' ? {createdAt: 1} : {createdAt: -1};
+
+//   const [ordersRaw, totalCount] = await Promise.all([
+//     Order.find(query)
+//       .sort(sortOption)
+//       .skip(skip)
+//       .limit(limitNum)
+//       .populate({
+//         path: 'items.productId',
+//         select: 'name images quantityDetails',
+//       })
+//       .populate('deliveryAddress')
+//       .lean(),
+//     Order.countDocuments(query),
+//   ]);
+
+//   const allProductIds = new Set();
+//   ordersRaw.forEach(order => {
+//     order.items.forEach(item => {
+//       if (item.productId && item.productId._id) {
+//         allProductIds.add(item.productId._id.toString());
+//       }
+//     });
+//   });
+
+//   console.log('Product IDs in user orders:', Array.from(allProductIds));
+
+//   let productDataMap = {};
+//   if (allProductIds.size > 0) {
+//     const objectIds = Array.from(allProductIds).map(id => new mongoose.Types.ObjectId(id));
+
+//     console.log(
+//       'Fetching quantityDetails for user order products:',
+//       objectIds.map(id => id.toString())
+//     );
+
+//     const products = await mongoose
+//       .model('Products')
+//       .find({_id: {$in: objectIds}}, 'quantityDetails')
+//       .lean();
+
+//     console.log(
+//       'Fetched products for user orders:',
+//       products.map(p => ({
+//         id: p._id.toString(),
+//         hasQD: !!p.quantityDetails,
+//         qdLength: p.quantityDetails?.length || 0,
+//       }))
+//     );
+
+//     products.forEach(product => {
+//       productDataMap[product._id.toString()] = product.quantityDetails || [];
+//     });
+
+//     console.log('Product data map created for user orders with', Object.keys(productDataMap).length, 'products');
+//   }
+
+//   const orders = ordersRaw.map(order => {
+//     order.items = order.items.map(item => {
+//       if (item.productId && item.productId._id) {
+//         const productId = item.productId._id.toString();
+//         const quantityDetails = productDataMap[productId];
+
+//         if (quantityDetails && quantityDetails.length > 0) {
+//           console.log(
+//             ` Using fetched quantityDetails for user order product ${productId} (${quantityDetails.length} entries)`
+//           );
+//           item.productId.quantityDetails = quantityDetails;
+//         } else {
+//           console.log(` No quantityDetails found for user order product ${productId}`);
+//           item.productId.quantityDetails = [];
+//         }
+//       }
+
+//       console.log('Processing user order item:', {
+//         orderId: order._id,
+//         userId: userId,
+//         productId: item.productId?._id,
+//         quantityIndex: item.quantityIndex,
+//         packageIndex: item.packageIndex,
+//         hasQuantityDetails: !!item.productId?.quantityDetails,
+//         quantityDetailsLength: item.productId?.quantityDetails?.length || 0,
+//       });
+
+//       const selected = getSelectedPackageForItem(item);
+
+//       console.log('Selected result for user order item:', {
+//         orderId: order._id,
+//         userId: userId,
+//         matchReason: selected?.matchReason,
+//         hasPackage: !!selected?.package,
+//         selectedQuantity: selected?.quantity,
+//       });
+
+//       if (item.productId && item.productId.quantityDetails) {
+//         delete item.productId.quantityDetails;
+//       }
+
+//       return {
+//         ...item,
+//         selectedPackage: selected ? selected.package : null,
+//         selectedQuantity: selected ? selected.quantity : null,
+//         selectedUnitPrice: selected ? selected.unitPrice : item.price,
+//         selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
+//       };
+//     });
+//     return order;
+//   });
+
+//   res.status(httpStatus.OK).json({
+//     status: true,
+//     data: {
+//       page: pageNum,
+//       limit: limitNum,
+//       results: orders,
+//       totalPages: Math.ceil(totalCount / limitNum),
+//       totalResults: totalCount,
+//     },
+//     message: `Orders for user ${userId} fetched successfully`,
+//   });
+// });
+
 const getOrdersByUser = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
@@ -562,7 +699,10 @@ const getOrdersByUser = catchAsync(async (req, res) => {
   ]);
 
   const allProductIds = new Set();
+  const orderIds = [];
+
   ordersRaw.forEach(order => {
+    orderIds.push(order._id.toString());
     order.items.forEach(item => {
       if (item.productId && item.productId._id) {
         allProductIds.add(item.productId._id.toString());
@@ -601,8 +741,27 @@ const getOrdersByUser = catchAsync(async (req, res) => {
 
     console.log('Product data map created for user orders with', Object.keys(productDataMap).length, 'products');
   }
+  let ratingsMap = {};
+  if (orderIds.length > 0) {
+    try {
+      const ratings = await Rating.find({
+        orderId: {$in: orderIds},
+        userId: userId,
+      }).lean();
+
+      console.log(`Fetched ${ratings.length} ratings for ${orderIds.length} orders`);
+
+      ratings.forEach(rating => {
+        ratingsMap[rating.orderId.toString()] = rating;
+      });
+    } catch (error) {
+      console.log('Rating model not found or error fetching ratings:', error.message);
+    }
+  }
 
   const orders = ordersRaw.map(order => {
+    const orderRating = ratingsMap[order._id.toString()] || null;
+
     order.items = order.items.map(item => {
       if (item.productId && item.productId._id) {
         const productId = item.productId._id.toString();
@@ -651,7 +810,19 @@ const getOrdersByUser = catchAsync(async (req, res) => {
         selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
       };
     });
-    return order;
+    return {
+      ...order,
+      rating: orderRating
+        ? {
+            _id: orderRating._id,
+            rating: orderRating.rating,
+            review: orderRating.message,
+            createdAt: orderRating.createdAt,
+            updatedAt: orderRating.updatedAt,
+          }
+        : null,
+      hasRating: !!orderRating,
+    };
   });
 
   res.status(httpStatus.OK).json({
