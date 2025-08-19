@@ -100,16 +100,17 @@ const createAuthor = async (req, res) => {
 };
 
 const updateAuthor = catchAsync(async (req, res) => {
+  let newKey = null;
+  let signedUrl = null;
+
   try {
-    const {name, instagramHandle, description, status, order} = req.body;
+    const { name, instagramHandle, description, status, order } = req.body;
     const author = await Author.findById(req.params.id);
     if (!author) {
-      return res.status(httpStatus.NOT_FOUND).json({success: false, message: 'Author not found'});
+      return res.status(httpStatus.NOT_FOUND).json({ success: false, message: 'Author not found' });
     }
 
     const oldImageUrl = author.profileImage;
-    let newKey = null,
-      signedUrl = null;
 
     author.name = name || author.name;
     author.instagramHandle = instagramHandle || author.instagramHandle;
@@ -144,7 +145,11 @@ const updateAuthor = catchAsync(async (req, res) => {
     });
   } catch (error) {
     if (newKey) {
-      await deleteImage(newKey);
+      try {
+        await deleteImage(newKey);
+      } catch (delErr) {
+        console.warn('Failed to delete newKey during error cleanup:', delErr);
+      }
     }
     res.status(httpStatus.BAD_REQUEST).json({
       success: false,
@@ -153,6 +158,7 @@ const updateAuthor = catchAsync(async (req, res) => {
     });
   }
 });
+
 const deleteAuthor = catchAsync(async (req, res) => {
   try {
     const author = await Author.findById(req.params.id);

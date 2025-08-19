@@ -11,5 +11,6 @@ router.get('/my-reviews',firebaseAuth('user'), reviewController.getUserReviews);
 
 router.get('/admin/all', reviewController.getAllReviews);
 router.delete('/admin/:reviewId', reviewController.deleteReview);
+router.patch('/admin-review/:reviewId', reviewController.updateReviewStatus);
 
 module.exports = router;

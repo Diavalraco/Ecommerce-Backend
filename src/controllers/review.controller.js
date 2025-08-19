@@ -5,10 +5,10 @@ const catchAsync = require('../utils/catchAsync');
 const mongoose = require('mongoose');
 const httpStatus = require('http-status');
 
-const updateProductRating = async (productId) => {
+const updateProductRating = async productId => {
   try {
-    const reviews = await Review.find({ productId, status: 'active' });
-    
+    const reviews = await Review.find({productId, status: 'active'});
+
     if (reviews.length === 0) {
       await Products.findByIdAndUpdate(productId, {
         ratingAvg: 0,
@@ -32,7 +32,7 @@ const updateProductRating = async (productId) => {
 };
 
 const createReview = catchAsync(async (req, res) => {
-  const { productId, orderId, rating, message } = req.body;
+  const {productId, orderId, rating, message} = req.body;
   const userId = req.user.id;
 
   if (!productId || !orderId || !rating || !message) {
@@ -56,7 +56,7 @@ const createReview = catchAsync(async (req, res) => {
     });
   }
 
-  const existingReview = await Review.findOne({ userId, productId });
+  const existingReview = await Review.findOne({userId, productId});
   if (existingReview) {
     return res.status(httpStatus.BAD_REQUEST).json({
       status: false,
@@ -77,9 +77,7 @@ const createReview = catchAsync(async (req, res) => {
     });
   }
 
-  const productInOrder = order.items.some(
-    item => item.productId._id.toString() === productId
-  );
+  const productInOrder = order.items.some(item => item.productId._id.toString() === productId);
 
   if (!productInOrder) {
     return res.status(httpStatus.BAD_REQUEST).json({
@@ -121,8 +119,8 @@ const createReview = catchAsync(async (req, res) => {
 });
 
 const getProductReviews = catchAsync(async (req, res) => {
-  const { productId } = req.params;
-  const { page = 1, limit = 10, sort = 'newest' } = req.query;
+  const {productId} = req.params;
+  const {page = 1, limit = 10, sort = 'newest'} = req.query;
 
   if (!mongoose.Types.ObjectId.isValid(productId)) {
     return res.status(httpStatus.BAD_REQUEST).json({
@@ -134,24 +132,24 @@ const getProductReviews = catchAsync(async (req, res) => {
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
   const skip = (pageNum - 1) * limitNum;
-  let sortOption = { createdAt: -1 };
+  let sortOption = {createdAt: -1};
   if (sort === 'oldest') {
-    sortOption = { createdAt: 1 };
+    sortOption = {createdAt: 1};
   } else if (sort === 'highest_rating') {
-    sortOption = { rating: -1, createdAt: -1 };
+    sortOption = {rating: -1, createdAt: -1};
   } else if (sort === 'lowest_rating') {
-    sortOption = { rating: 1, createdAt: -1 };
+    sortOption = {rating: 1, createdAt: -1};
   }
 
   const [reviews, totalCount, product] = await Promise.all([
-    Review.find({ productId, status: 'active' })
+    Review.find({productId, status: 'active'})
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum)
       .populate('userId', 'fullName name email')
       .populate('orderId', '_id razorpayOrderId createdAt')
       .lean(),
-    Review.countDocuments({ productId, status: 'active' }),
+    Review.countDocuments({productId, status: 'active'}),
     Products.findById(productId, 'name ratingAvg ratingCount'),
   ]);
 
@@ -163,9 +161,9 @@ const getProductReviews = catchAsync(async (req, res) => {
   }
 
   const ratingDistribution = await Review.aggregate([
-    { $match: { productId: new mongoose.Types.ObjectId(productId), status: 'active' } },
-    { $group: { _id: '$rating', count: { $sum: 1 } } },
-    { $sort: { _id: -1 } },
+    {$match: {productId: new mongoose.Types.ObjectId(productId), status: 'active'}},
+    {$group: {_id: '$rating', count: {$sum: 1}}},
+    {$sort: {_id: -1}},
   ]);
 
   const distribution = {};
@@ -198,30 +196,30 @@ const getProductReviews = catchAsync(async (req, res) => {
 
 const getUserReviews = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const { page = 1, limit = 10, sort = 'newest' } = req.query;
+  const {page = 1, limit = 10, sort = 'newest'} = req.query;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
   const skip = (pageNum - 1) * limitNum;
 
-  let sortOption = { createdAt: -1 };
+  let sortOption = {createdAt: -1};
   if (sort === 'oldest') {
-    sortOption = { createdAt: 1 };
+    sortOption = {createdAt: 1};
   } else if (sort === 'highest_rating') {
-    sortOption = { rating: -1, createdAt: -1 };
+    sortOption = {rating: -1, createdAt: -1};
   } else if (sort === 'lowest_rating') {
-    sortOption = { rating: 1, createdAt: -1 };
+    sortOption = {rating: 1, createdAt: -1};
   }
 
   const [reviews, totalCount] = await Promise.all([
-    Review.find({ userId })
+    Review.find({userId})
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum)
       .populate('productId', 'name images')
       .populate('orderId', '_id razorpayOrderId createdAt')
       .lean(),
-    Review.countDocuments({ userId }),
+    Review.countDocuments({userId}),
   ]);
 
   res.status(httpStatus.OK).json({
@@ -238,7 +236,7 @@ const getUserReviews = catchAsync(async (req, res) => {
 });
 
 const getAllReviews = catchAsync(async (req, res) => {
-  const { page = 1, limit = 10, sort = 'newest', status = 'all', rating } = req.query;
+  const {page = 1, limit = 10, sort = 'newest', status = 'all', rating} = req.query;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
@@ -252,13 +250,13 @@ const getAllReviews = catchAsync(async (req, res) => {
     query.rating = parseInt(rating);
   }
 
-  let sortOption = { createdAt: -1 };
+  let sortOption = {createdAt: -1};
   if (sort === 'oldest') {
-    sortOption = { createdAt: 1 };
+    sortOption = {createdAt: 1};
   } else if (sort === 'highest_rating') {
-    sortOption = { rating: -1, createdAt: -1 };
+    sortOption = {rating: -1, createdAt: -1};
   } else if (sort === 'lowest_rating') {
-    sortOption = { rating: 1, createdAt: -1 };
+    sortOption = {rating: 1, createdAt: -1};
   }
 
   const [reviews, totalCount] = await Promise.all([
@@ -287,7 +285,7 @@ const getAllReviews = catchAsync(async (req, res) => {
 });
 
 const deleteReview = catchAsync(async (req, res) => {
-  const { reviewId } = req.params;
+  const {reviewId} = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     return res.status(httpStatus.BAD_REQUEST).json({
@@ -313,6 +311,49 @@ const deleteReview = catchAsync(async (req, res) => {
     message: 'Review deleted successfully',
   });
 });
+const updateReviewStatus = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ['active', 'hidden', 'pending'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        status: false,
+        message: 'Invalid status. Must be one of: active, hidden, pending',
+      });
+    }
+
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({
+        status: false,
+        message: 'Review not found',
+      });
+    }
+
+    review.status = status;
+    await review.save();
+
+    await review.populate([
+      { path: 'userId', select: 'fullName name email' },
+      { path: 'productId', select: 'name images' },
+    ]);
+
+    return res.status(200).json({
+      status: true,
+      message: `Review status updated to ${status} successfully`,
+      data: review,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: false,
+      message: 'An error occurred while updating review status',
+      error: error.message,
+    });
+  }
+};
+
 
 module.exports = {
   createReview,
@@ -320,4 +361,5 @@ module.exports = {
   getUserReviews,
   getAllReviews,
   deleteReview,
+  updateReviewStatus,
 };
