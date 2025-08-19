@@ -838,6 +838,118 @@ const getOrdersByUser = catchAsync(async (req, res) => {
   });
 });
 
+// const getOrderById = catchAsync(async (req, res) => {
+//   const {id} = req.params;
+
+//   if (!mongoose.Types.ObjectId.isValid(id)) {
+//     return res.status(httpStatus.BAD_REQUEST).json({status: false, data: null, message: 'Invalid order id'});
+//   }
+
+//   const orderRaw = await Order.findById(id)
+//     .populate('items.productId', 'name images quantityDetails')
+//     .populate('deliveryAddress')
+//     .populate({path: 'userId', select: 'fullName name email phoneNumber phone _id'})
+//     .lean();
+
+//   if (!orderRaw) {
+//     return res.status(httpStatus.NOT_FOUND).json({status: false, data: null, message: 'Order not found'});
+//   }
+
+//   const allProductIds = new Set();
+//   orderRaw.items.forEach(item => {
+//     if (item.productId && item.productId._id) {
+//       allProductIds.add(item.productId._id.toString());
+//     }
+//   });
+
+//   console.log('Product IDs in order:', Array.from(allProductIds));
+
+//   let productDataMap = {};
+//   if (allProductIds.size > 0) {
+//     const objectIds = Array.from(allProductIds).map(id => new mongoose.Types.ObjectId(id));
+
+//     console.log(
+//       'Fetching quantityDetails for order products:',
+//       objectIds.map(id => id.toString())
+//     );
+
+//     const products = await mongoose
+//       .model('Products')
+//       .find({_id: {$in: objectIds}}, 'quantityDetails')
+//       .lean();
+
+//     console.log(
+//       'Fetched products for order:',
+//       products.map(p => ({
+//         id: p._id.toString(),
+//         hasQD: !!p.quantityDetails,
+//         qdLength: p.quantityDetails?.length || 0,
+//       }))
+//     );
+
+//     products.forEach(product => {
+//       productDataMap[product._id.toString()] = product.quantityDetails || [];
+//     });
+
+//     console.log('Product data map created for order with', Object.keys(productDataMap).length, 'products');
+//   }
+
+//   const processedOrder = {
+//     ...orderRaw,
+//     items: orderRaw.items.map(item => {
+//       if (item.productId && item.productId._id) {
+//         const productId = item.productId._id.toString();
+//         const quantityDetails = productDataMap[productId];
+
+//         if (quantityDetails && quantityDetails.length > 0) {
+//           console.log(` Using fetched quantityDetails for product ${productId} (${quantityDetails.length} entries)`);
+//           item.productId.quantityDetails = quantityDetails;
+//         } else {
+//           console.log(`No quantityDetails found for product ${productId}`);
+//           item.productId.quantityDetails = [];
+//         }
+//       }
+
+//       console.log('Processing order item:', {
+//         orderId: orderRaw._id,
+//         productId: item.productId?._id,
+//         quantityIndex: item.quantityIndex,
+//         packageIndex: item.packageIndex,
+//         hasQuantityDetails: !!item.productId?.quantityDetails,
+//         quantityDetailsLength: item.productId?.quantityDetails?.length || 0,
+//       });
+
+//       const selected = getSelectedPackageForItem(item);
+
+//       console.log('Selected result for order item:', {
+//         orderId: orderRaw._id,
+//         matchReason: selected?.matchReason,
+//         hasPackage: !!selected?.package,
+//         selectedQuantity: selected?.quantity,
+//       });
+
+//       if (item.productId && item.productId.quantityDetails) {
+//         delete item.productId.quantityDetails;
+//       }
+
+//       return {
+//         ...item,
+//         selectedPackage: selected ? selected.package : null,
+//         selectedQuantity: selected ? selected.quantity : null,
+//         selectedUnitPrice: selected ? selected.unitPrice : item.price,
+//         selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
+//       };
+//     }),
+//   };
+
+//   res.status(httpStatus.OK).json({
+//     status: true,
+//     data: processedOrder,
+//     message: 'Order fetched successfully',
+//   });
+// });
+
+
 const getOrderById = catchAsync(async (req, res) => {
   const {id} = req.params;
 
@@ -894,6 +1006,26 @@ const getOrderById = catchAsync(async (req, res) => {
     console.log('Product data map created for order with', Object.keys(productDataMap).length, 'products');
   }
 
+  let orderRating = null;
+  try {
+    const rating = await Rating.findOne({
+      orderId: id,
+      userId: orderRaw.userId._id || orderRaw.userId
+    }).lean();
+
+    if (rating) {
+      console.log(`Found rating for order ${id}:`, {
+        rating: rating.rating,
+        hasReview: !!rating.review
+      });
+      orderRating = rating;
+    } else {
+      console.log(`No rating found for order ${id}`);
+    }
+  } catch (error) {
+    console.log('Rating model not found or error fetching rating:', error.message);
+  }
+
   const processedOrder = {
     ...orderRaw,
     items: orderRaw.items.map(item => {
@@ -940,6 +1072,14 @@ const getOrderById = catchAsync(async (req, res) => {
         selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
       };
     }),
+    rating: orderRating ? {
+      _id: orderRating._id,
+      rating: orderRating.rating,
+      review: orderRating.message,
+      createdAt: orderRating.createdAt,
+      updatedAt: orderRating.updatedAt
+    } : null,
+    hasRating: !!orderRating
   };
 
   res.status(httpStatus.OK).json({
