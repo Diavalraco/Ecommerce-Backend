@@ -2,7 +2,7 @@ const Order = require('../models/order.model');
 const Products = require('../models/products.model');
 const Coupon = require('../models/coupon.model');
 const Address = require('../models/address.model');
-const Rating = require('../models/review.model')
+const Rating = require('../models/review.model');
 const catchAsync = require('../utils/catchAsync');
 const mongoose = require('mongoose');
 const httpStatus = require('http-status');
@@ -949,7 +949,6 @@ const getOrdersByUser = catchAsync(async (req, res) => {
 //   });
 // });
 
-
 const getOrderById = catchAsync(async (req, res) => {
   const {id} = req.params;
 
@@ -1010,13 +1009,13 @@ const getOrderById = catchAsync(async (req, res) => {
   try {
     const rating = await Rating.findOne({
       orderId: id,
-      userId: orderRaw.userId._id || orderRaw.userId
+      userId: orderRaw.userId._id || orderRaw.userId,
     }).lean();
 
     if (rating) {
       console.log(`Found rating for order ${id}:`, {
         rating: rating.rating,
-        hasReview: !!rating.review
+        hasReview: !!rating.review,
       });
       orderRating = rating;
     } else {
@@ -1072,14 +1071,16 @@ const getOrderById = catchAsync(async (req, res) => {
         selectedTotalPrice: selected ? selected.totalPrice : item.totalPrice,
       };
     }),
-    rating: orderRating ? {
-      _id: orderRating._id,
-      rating: orderRating.rating,
-      review: orderRating.message,
-      createdAt: orderRating.createdAt,
-      updatedAt: orderRating.updatedAt
-    } : null,
-    hasRating: !!orderRating
+    rating: orderRating
+      ? {
+          _id: orderRating._id,
+          rating: orderRating.rating,
+          review: orderRating.message,
+          createdAt: orderRating.createdAt,
+          updatedAt: orderRating.updatedAt,
+        }
+      : null,
+    hasRating: !!orderRating,
   };
 
   res.status(httpStatus.OK).json({
