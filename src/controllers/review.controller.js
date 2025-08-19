@@ -236,7 +236,7 @@ const getUserReviews = catchAsync(async (req, res) => {
 });
 
 const getAllReviews = catchAsync(async (req, res) => {
-  const {page = 1, limit = 10, sort = 'newest', status = 'all', rating} = req.query;
+  const {page = 1, limit = 10, sort = 'newest', status = 'all', rating, productId} = req.query;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
@@ -248,6 +248,19 @@ const getAllReviews = catchAsync(async (req, res) => {
   }
   if (rating && rating >= 1 && rating <= 5) {
     query.rating = parseInt(rating);
+  }
+
+  if (productId) {
+    const ids = productId.includes(',') ? productId.split(',') : [productId];
+    const invalid = ids.some(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalid) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: false,
+        message: 'Invalid productId provided',
+      });
+    }
+    query.productId =
+      ids.length === 1 ? new mongoose.Types.ObjectId(ids[0]) : {$in: ids.map(id => new mongoose.Types.ObjectId(id))};
   }
 
   let sortOption = {createdAt: -1};
@@ -313,8 +326,8 @@ const deleteReview = catchAsync(async (req, res) => {
 });
 const updateReviewStatus = async (req, res) => {
   try {
-    const { reviewId } = req.params;
-    const { status } = req.body;
+    const {reviewId} = req.params;
+    const {status} = req.body;
 
     const validStatuses = ['active', 'hidden', 'pending'];
     if (!validStatuses.includes(status)) {
@@ -336,8 +349,8 @@ const updateReviewStatus = async (req, res) => {
     await review.save();
 
     await review.populate([
-      { path: 'userId', select: 'fullName name email' },
-      { path: 'productId', select: 'name images' },
+      {path: 'userId', select: 'fullName name email'},
+      {path: 'productId', select: 'name images'},
     ]);
 
     return res.status(200).json({
@@ -353,7 +366,6 @@ const updateReviewStatus = async (req, res) => {
     });
   }
 };
-
 
 module.exports = {
   createReview,
