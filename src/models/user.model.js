@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
     isBlocked: {type: Boolean, default: false},
     isDeleted: {type: Boolean, default: false},
     fullName: {type: String, trim: true, default: null},
-    gender: {type: String, enum: ['male', 'female', 'other'], default: null},
+    gender: {type: String, default: null},
     dateOfBirth: {type: Date, default: null},
     profileImage: {type: String, default: null},
   },
